@@ -788,6 +788,113 @@ fn deliver_frame(
     }
     true
 }
+fn cached_video_path(url: &str) -> PathBuf {
+    crate::engine::cache_dir()
+        .join("motion-videos")
+        .join(format!("{:016x}.mp4", fnv1a_hash(url.as_bytes())))
+}
+
+fn fnv1a_hash(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for &b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+fn cache_video_in_background(binary: PathBuf, url: String, dest: PathBuf) {
+    static INFLIGHT: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    let set = INFLIGHT.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    if let Ok(mut guard) = set.lock() {
+        if !guard.insert(url.clone()) {
+            return;
+        }
+    }
+    std::thread::spawn(move || {
+        let _cleanup = scopeguard_remove(set, url.clone());
+        if dest.is_file() {
+            return;
+        }
+        if let Some(parent) = dest.parent() {
+            if std::fs::create_dir_all(parent).is_err() {
+                return;
+            }
+        }
+        let tmp = dest.with_extension("mp4.part");
+        let _ = std::fs::remove_file(&tmp);
+        let mut cmd = Command::new(&binary);
+        cmd.args([
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-rw_timeout",
+            "15000000",
+            "-i",
+            &url,
+            "-an",
+            "-sn",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+        ])
+        .arg(&tmp)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
+        if cmd.status().is_ok_and(|s| s.success()) && tmp.is_file() {
+            let _ = std::fs::rename(&tmp, &dest);
+        } else {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    });
+}
+
+struct InflightGuard<'a>(&'a Mutex<std::collections::HashSet<String>>, String);
+impl Drop for InflightGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut g) = self.0.lock() {
+            g.remove(&self.1);
+        }
+    }
+}
+fn scopeguard_remove(
+    set: &'static Mutex<std::collections::HashSet<String>>,
+    url: String,
+) -> InflightGuard<'static> {
+    InflightGuard(set, url)
+}
+
+fn restart_active_video(output: Output) {
+    on_ui(move |ui, app| {
+        if ui.get_motion_paused() {
+            return;
+        }
+        match output {
+            Output::Page => {
+                if matches!(ui.get_page(), 2 | 3) && !ui.get_now_playing_open() {
+                    restore(ui, app);
+                }
+            }
+            Output::Track => {
+                if ui.get_now_playing_open() {
+                    if let Some(track) = app.player.track.clone() {
+                        app.media_now.key = None;
+                        load_now(ui, app, &track);
+                    }
+                }
+            }
+        }
+    });
+}
+
 fn start(
     ui: &MainWindow,
     app: &mut App,
@@ -806,6 +913,16 @@ fn start(
     if !valid_stream(&variant.url) || ui.get_motion_paused() {
         return;
     }
+    let local_cache = cached_video_path(&variant.url);
+    let use_local = local_cache.is_file();
+    if !use_local {
+        cache_video_in_background(binary.clone(), variant.url.clone(), local_cache.clone());
+    }
+    let input_source = if use_local {
+        local_cache.to_string_lossy().into_owned()
+    } else {
+        variant.url.clone()
+    };
     let use_ffmpeg_re = variant.fps.is_none_or(|f| f <= 1.0);
     let (width, height, filter) = if variant.width > 0 && variant.height > 0 {
         if variant.width <= target_w && variant.height <= target_h {
@@ -834,16 +951,19 @@ fn start(
         "-hide_banner".into(),
         "-loglevel".into(),
         "error".into(),
-        "-rw_timeout".into(),
-        "15000000".into(),
-        // Arranque rápido con análisis ligero pero suficiente para HLS.
-        "-probesize".into(),
-        "131072".into(),
-        "-analyzeduration".into(),
-        "250000".into(),
-        "-threads".into(),
-        "0".into(),
     ];
+    if !use_local {
+        args.extend([
+            "-rw_timeout".into(),
+            "15000000".into(),
+            // Arranque rápido con análisis ligero pero suficiente para HLS.
+            "-probesize".into(),
+            "131072".into(),
+            "-analyzeduration".into(),
+            "250000".into(),
+        ]);
+    }
+    args.extend(["-threads".into(), "0".into()]);
     if use_ffmpeg_re {
         args.push("-re".into());
     }
@@ -851,7 +971,7 @@ fn start(
         "-stream_loop".into(),
         "-1".into(),
         "-i".into(),
-        variant.url.clone(),
+        input_source,
         "-an".into(),
         "-sn".into(),
     ]);
@@ -916,6 +1036,9 @@ fn start(
             let mut frame = take_buffer(&reader_recycle, frame_bytes);
             if stdout.read_exact(&mut frame).is_err() {
                 return_buffer(&reader_recycle, frame);
+                if reader_weak.strong_count() > 0 {
+                    restart_active_video(output);
+                }
                 break;
             }
             if tx.send(frame).is_err() {
@@ -958,6 +1081,9 @@ fn start(
             let mut frame = take_buffer(&recycle, frame_bytes);
             if stdout.read_exact(&mut frame).is_err() {
                 return_buffer(&recycle, frame);
+                if slot_weak.strong_count() > 0 {
+                    restart_active_video(output);
+                }
                 break;
             }
             if !deliver_frame(output, &slot_weak, &recycle, frame) {

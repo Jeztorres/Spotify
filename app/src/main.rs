@@ -564,7 +564,12 @@ fn sync_window_frame(ui: &MainWindow) {
                 }
             }
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        {
+            window.set_decorations(true);
+            media_keys::install();
+        }
+        #[cfg(all(not(windows), not(target_os = "macos")))]
         {
             media_keys::install();
         }
@@ -647,9 +652,20 @@ fn wire_window_controls(ui: &MainWindow) {
                 hit
             });
             if double {
-                let _ = ui
-                    .window()
-                    .with_winit_window(|w| w.set_maximized(!w.is_maximized()));
+                let _ = ui.window().with_winit_window(|w| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        use slint::winit_030::winit::window::Fullscreen;
+                        let next = if w.fullscreen().is_some() {
+                            None
+                        } else {
+                            Some(Fullscreen::Borderless(None))
+                        };
+                        w.set_fullscreen(next);
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    w.set_maximized(!w.is_maximized());
+                });
                 let _ = slint::invoke_from_event_loop(|| {
                     with_app(|ui, _| sync_window_frame(ui));
                 });
@@ -1634,6 +1650,7 @@ fn main() -> Result<(), slint::PlatformError> {
     #[cfg(windows)]
     let _timer_period = WinTimerPeriod::acquire();
     let ui = MainWindow::new()?;
+    ui.set_is_macos(cfg!(target_os = "macos"));
     if let Err(error) = ui.window().set_rendering_notifier(|state, api| {
         if matches!(state, slint::RenderingState::RenderingSetup) {
             if matches!(api, slint::GraphicsAPI::NativeOpenGL { .. }) {
