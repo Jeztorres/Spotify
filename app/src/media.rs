@@ -974,6 +974,12 @@ fn start(
     ];
     if !use_local {
         args.extend([
+            "-reconnect".into(),
+            "1".into(),
+            "-reconnect_streamed".into(),
+            "1".into(),
+            "-reconnect_delay_max".into(),
+            "2".into(),
             "-rw_timeout".into(),
             "15000000".into(),
             // Arranque rápido con análisis ligero pero suficiente para HLS.

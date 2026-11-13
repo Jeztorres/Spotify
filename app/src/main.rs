@@ -1737,6 +1737,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let _timer_period = WinTimerPeriod::acquire();
     let ui = MainWindow::new()?;
     ui.set_is_macos(cfg!(target_os = "macos"));
+    ui.set_app_version(env!("APP_BUILD_INFO").into());
     if let Err(error) = ui.window().set_rendering_notifier(|state, api| {
         if matches!(state, slint::RenderingState::RenderingSetup) {
             if matches!(api, slint::GraphicsAPI::NativeOpenGL { .. }) {

@@ -848,6 +848,7 @@ export component MainWindow inherits Window {
     in-out property <bool> artist-show-all;
     in property <string> album-copyright;
     in property <string> album-artist;
+    in property <string> app-version;
     in property <[TrackEntry]> suggestion-rows;
     in property <string> suggestion-message;
     in property <bool> suggestions-loading;
@@ -2096,7 +2097,14 @@ export component MainWindow inherits Window {
                                 Button { text: "Cerrar sesión"; clicked => { root.sign-out(); } }
                             }
                         }
-                        Text { text: "SpotifyMac · Requiere Spotify Premium."; color: Theme.sub; font-size: 11px; horizontal-alignment: left; }
+                        SettingGroup {
+                            title: "Acerca de";
+                            SettingRow {
+                                title: "Versión instalada";
+                                detail: root.app-version == "" ? "v0.1.0" : root.app-version;
+                            }
+                        }
+                        Text { text: "SpotifyMac " + root.app-version + " · Requiere Spotify Premium."; color: Theme.sub; font-size: 11px; horizontal-alignment: left; }
                         Rectangle { height: 112px; background: transparent; }
                     }
                 }
