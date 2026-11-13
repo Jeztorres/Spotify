@@ -25,9 +25,5 @@ souvlaki = "0.8"
 keyring = { version = "3", default-features = false, features = ["windows-native"] }
 windows-sys = { version = "0.60", features = ["Win32_UI_Controls_Dialogs", "Win32_Media", "Win32_System_Threading", "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell"] }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-# Credenciales en el Llavero de macOS.
-keyring = { version = "3", default-features = false, features = ["apple-native"] }
-
 [target.'cfg(all(not(windows), not(target_os = "macos")))'.dependencies]
 keyring = { version = "3", default-features = false, features = ["sync-secret-service"] }

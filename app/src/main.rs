@@ -1550,6 +1550,13 @@ fn key_error(ui: &MainWindow, app: &mut App) {
             ui.set_soloist_step("key".into());
             ui.set_soloist_open(true);
         }
+        (soloist::Status::NeedsPairing, _) => {
+            app.replay_when_ready = true;
+            app.solo_setup = true;
+            ui.set_soloist_step("pair".into());
+            ui.set_soloist_status("esperando emparejamiento".into());
+            ui.set_soloist_open(true);
+        }
         _ => app.replay_when_ready = true, // ya arrancando: se reproduce al estar listo
     }
 }
