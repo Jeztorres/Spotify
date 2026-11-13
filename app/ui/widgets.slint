@@ -1,0 +1,251 @@
+import { Theme } from "theme.slint";
+
+// Iconos dibujados con rutas vectoriales (en macOS eran SF Symbols).
+export component IconPath inherits Path {
+    in property <string> d;
+    in property <color> tint: white;
+    // `solid`: silueta rellena (p. ej. el triángulo de play); por defecto, icono de línea.
+    in property <bool> solid: false;
+    width: 18px;
+    height: 18px;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    commands: d;
+    fill: root.solid ? root.tint : transparent;
+    stroke: root.solid ? transparent : root.tint;
+    stroke-width: root.solid ? 0px : max(1.5px, root.width * 1.9 / 24);
+    stroke-line-cap: round;
+    stroke-line-join: round;
+}
+
+export component PlayPauseButton inherits Rectangle {
+    in property <bool> playing;
+    in property <color> accent: #ebebeb;
+    in property <bool> enabled: true;
+    opacity: root.enabled ? 1 : 0.4;
+    callback clicked();
+    width: 36px;
+    height: 36px;
+    border-radius: self.height / 2;
+    background: ta.has-hover ? root.accent.brighter(0.15) : root.accent;
+    drop-shadow-blur: ta.has-hover ? 14px : 6px;
+    drop-shadow-color: root.accent.with-alpha(0.45);
+    animate background, drop-shadow-blur { duration: 140ms; easing: ease-out; }
+
+    if !root.playing: IconPath {
+        d: "M7 4.5 L19.5 12 L7 19.5 Z";
+        tint: black;
+        solid: true;
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2 + 1px;
+        y: (parent.height - self.height) / 2;
+    }
+    if root.playing: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 12px;
+        height: 14px;
+        Rectangle { x: 0; width: 4px; height: 14px; background: black; border-radius: 2px; }
+        Rectangle { x: 8px; width: 4px; height: 14px; background: black; border-radius: 2px; }
+    }
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+export component RoundIconButton inherits Rectangle {
+    in property <color> active-color: Theme.green-bright;
+    in property <color> icon-color: Theme.sub;
+    in property <length> icon-size: 18px;
+    in property <bool> enabled: true;
+    opacity: root.enabled ? 1 : 0.4;
+    in property <string> d;
+    in property <bool> active: false;
+    in property <string> label;
+    in property <string> badge;
+    callback clicked();
+    width: 34px;
+    height: 34px;
+    border-radius: self.height / 2;
+    background: root.active
+        ? (ta.pressed ? #ffffff40 : (ta.has-hover ? #ffffff32 : #ffffff24))
+        : (ta.pressed ? #ffffff2a : (ta.has-hover ? #ffffff1c : transparent));
+    border-width: root.active ? 1px : 0px;
+    border-color: root.active ? #ffffff33 : transparent;
+    animate background { duration: 130ms; easing: ease-out; }
+    IconPath {
+        d: root.d;
+        tint: root.active ? root.active-color : (ta.has-hover ? white : root.icon-color);
+        width: root.icon-size;
+        height: root.icon-size;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        animate tint { duration: 120ms; }
+    }
+    if root.active: Rectangle { x: (parent.width - 4px) / 2; y: parent.height - 3px; width: 4px; height: 4px; border-radius: 2px; background: root.active-color; }
+    if root.badge != "": Text { text: root.badge; color: root.active-color; font-size: 9px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; }
+    accessible-role: button;
+    accessible-label: root.label;
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+// Barra de progreso / volumen: toma el color de la portada y se aclara al pasar el ratón.
+export component Scrubber inherits Rectangle {
+    in-out property <float> value: 0;
+    in property <color> bar-color: white;
+    in property <color> accent: Theme.green-bright;
+    in property <color> track-color: #ffffff2e;
+    in property <float> marker-start: 1.0;
+    in property <color> marker-color: Theme.green-bright;
+    callback changed(float);
+    height: 14px;
+    min-width: 60px;
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 4px;
+        border-radius: 2px;
+        background: root.track-color;
+        if root.marker-start < 0.999: Rectangle {
+            x: parent.width * clamp(root.marker-start, 0, 1);
+            y: 0;
+            height: parent.height;
+            width: parent.width * (1 - clamp(root.marker-start, 0, 1));
+            border-radius: 2px;
+            background: root.marker-color.with-alpha(root.value >= root.marker-start ? 0.9 : 0.42);
+        }
+        Rectangle {
+            x: 0;
+            y: 0;
+            height: parent.height;
+            width: parent.width * clamp(root.value, 0, 1);
+            border-radius: 2px;
+            background: root.value >= root.marker-start && root.marker-start < 0.999
+                ? root.marker-color
+                : (ta.has-hover || ta.pressed ? root.accent : root.bar-color);
+            animate background { duration: 180ms; }
+        }
+        if root.marker-start < 0.999: Rectangle {
+            x: parent.width * clamp(root.marker-start, 0, 1) - 1px;
+            y: (parent.height - self.height) / 2;
+            width: 2px;
+            height: 10px;
+            border-radius: 1px;
+            background: root.marker-color;
+        }
+        if ta.has-hover || ta.pressed: Rectangle {
+            x: parent.width * clamp(root.value, 0, 1) - 6px;
+            y: (parent.height - self.height) / 2;
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            background: root.bar-color.mix(white, 0.55);
+        }
+    }
+    ta := TouchArea {
+        function set-from(x: length) {
+            root.value = clamp(x / root.width, 0, 1);
+            root.changed(root.value);
+        }
+        pointer-event(e) => {
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down { set-from(self.mouse-x); }
+        }
+        moved => { if self.pressed { set-from(self.mouse-x); } }
+    }
+}
+
+export component VerticalEqSlider inherits Rectangle {
+    in-out property <float> value: 0.5;
+    in property <bool> active: true;
+    in property <color> accent: Theme.green-bright;
+    callback changed(float);
+    width: 32px;
+    height: 112px;
+
+    // Marca central (0 dB)
+    Rectangle {
+        x: 6px; y: parent.height / 2 - 0.5px;
+        width: parent.width - 12px; height: 1px;
+        background: #ffffff28;
+    }
+    // Pista vertical
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 6px;
+        width: 5px;
+        height: parent.height - 12px;
+        border-radius: 2.5px;
+        background: #ffffff24;
+        // Relleno desde abajo hasta el nivel
+        Rectangle {
+            x: 0;
+            width: parent.width;
+            height: parent.height * clamp(root.value, 0, 1);
+            y: parent.height - self.height;
+            border-radius: 2.5px;
+            background: root.active ? (ta.has-hover || ta.pressed ? root.accent.brighter(0.15) : root.accent) : #ffffff55;
+        }
+    }
+    // Perilla
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 6px + (parent.height - 12px) * (1 - clamp(root.value, 0, 1)) - self.height / 2;
+        width: ta.has-hover || ta.pressed ? 14px : 12px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: root.active ? white : #ffffff88;
+        animate width { duration: 120ms; }
+    }
+    ta := TouchArea {
+        enabled: root.active;
+        mouse-cursor: root.active ? pointer : default;
+        function set-from(y: length) {
+            root.value = clamp(1.0 - (y - 6px) / (root.height - 12px), 0, 1);
+            root.changed(root.value);
+        }
+        pointer-event(e) => {
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down { set-from(self.mouse-y); }
+        }
+        moved => { if self.pressed { set-from(self.mouse-y); } }
+    }
+}
+
+export component NavItem inherits Rectangle {
+    in property <string> icon-d;
+    in property <string> title;
+    in property <bool> active;
+    callback clicked();
+    height: 40px;
+    border-radius: 8px;
+    background: root.active ? #ffffff10 : (ta.has-hover ? #ffffff08 : transparent);
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 16px;
+        alignment: start;
+        IconPath {
+            d: root.icon-d;
+            tint: root.active || ta.has-hover ? white : Theme.sub;
+            y: (parent.height - self.height) / 2;
+            width: 22px;
+            height: 22px;
+        }
+        Text {
+            text: root.title;
+            font-size: 15px;
+            font-weight: 700;
+            color: root.active || ta.has-hover ? white : Theme.sub;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component Cover inherits Rectangle {
+    in property <image> source;
+    in property <brush> fallback: Theme.hover;
+    in property <length> corner: 6px;
+    border-radius: root.corner;
+    background: root.fallback;
+    clip: true;
+    Image { source: root.source; width: 100%; height: 100%; image-fit: cover; }
+}

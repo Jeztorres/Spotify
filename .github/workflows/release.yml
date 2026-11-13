@@ -1,0 +1,111 @@
+name: Release (Windows & macOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Engine
+        working-directory: Engine
+        run: cargo build --release
+
+      - name: Build App
+        run: cargo build --release -p spotify-win
+
+      - name: Package .app and .dmg
+        run: |
+          mkdir -p SpotifyMac.app/Contents/MacOS
+          cp target/release/spotify-win SpotifyMac.app/Contents/MacOS/SpotifyMac
+          cp Engine/target/release/spotifymac-engine SpotifyMac.app/Contents/MacOS/spotifymac-engine
+          cat > SpotifyMac.app/Contents/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>SpotifyMac</string>
+            <key>CFBundleDisplayName</key><string>SpotifyMac</string>
+            <key>CFBundleIdentifier</key><string>com.jeztorres.SpotifyMac</string>
+            <key>CFBundleExecutable</key><string>SpotifyMac</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>0.1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSMinimumSystemVersion</key><string>12.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          EOF
+          chmod +x SpotifyMac.app/Contents/MacOS/SpotifyMac SpotifyMac.app/Contents/MacOS/spotifymac-engine
+          codesign --force --sign - SpotifyMac.app/Contents/MacOS/spotifymac-engine
+          codesign --force --sign - SpotifyMac.app
+          mkdir -p dmg_staging
+          cp -R SpotifyMac.app dmg_staging/
+          ln -s /Applications dmg_staging/Applications
+          hdiutil create -volname "SpotifyMac" -srcfolder dmg_staging -ov -format UDZO SpotifyMac-macOS.dmg
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: SpotifyMac-macOS.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Engine
+        working-directory: Engine
+        run: cargo build --release
+
+      - name: Build App
+        run: cargo build --release -p spotify-win
+
+      - name: Package Windows ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path win_staging | Out-Null
+          Copy-Item target/release/spotify-win.exe win_staging/
+          Copy-Item Engine/target/release/spotifymac-engine.exe win_staging/
+          Compress-Archive -Path win_staging/* -DestinationPath SpotifyMac-Windows.zip -Force
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            SpotifyMac-Windows.zip
+            target/release/spotify-win.exe
+
+  publish-release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub Release (latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: SpotifyMac Latest
+          make_latest: true
+          files: |
+            artifacts/macos-release/SpotifyMac-macOS.dmg
+            artifacts/windows-release/SpotifyMac-Windows.zip
+            artifacts/windows-release/spotify-win.exe

@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["core", "app"]
+# El motor conserva su propio Cargo.lock y el [patch] de librespot hasta integrarlo como librería.
+exclude = ["Engine"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

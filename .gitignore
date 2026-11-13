@@ -1,0 +1,20 @@
+# Rust build artifacts
+target/
+Engine/target/
+**/*.rs.bk
+
+# Bundled / downloaded media runtime (too large for GitHub)
+tools/media/runtime/
+tools/media/*.zip
+
+# Packaged installers and binaries
+*.exe
+*.dll
+*.app/
+*.dmg
+
+# OS & editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
