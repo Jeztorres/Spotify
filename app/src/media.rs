@@ -981,8 +981,8 @@ fn start(
     if let Some(f) = filter {
         vf_parts.push(f);
     }
-    if variant.fps.is_some_and(|f| f > 24.0) {
-        vf_parts.push("fps=24".into());
+    if variant.fps.is_some_and(|f| f > 15.0) {
+        vf_parts.push("fps=15".into());
     }
     if !vf_parts.is_empty() {
         args.push("-vf".into());
@@ -1032,7 +1032,7 @@ fn start(
     }));
     media.frames = Some(latest.clone());
     let frame_bytes = width as usize * height as usize * 4;
-    let mut paced_fps = variant.fps.filter(|f| *f > 1.0 && f.is_finite()).map(|f| f.min(24.0));
+    let mut paced_fps = variant.fps.filter(|f| *f > 1.0 && f.is_finite()).map(|f| f.min(15.0));
     if use_ffmpeg_re && paced_fps.is_none() {
         paced_fps = None;
     }
@@ -1162,6 +1162,7 @@ fn present_frame(ui: &MainWindow, app: &mut App, output: Output, slot: &LatestFr
         }
     }
     // Redibujado inmediato en winit para evitar la cuantización del TimerBasedFrameThrottle de Slint en Windows.
+    #[cfg(windows)]
     ui.window().with_winit_window(|w| w.request_redraw());
 }
 /// Atributos `CLAVE=valor` de una línea `#EXT-X-STREAM-INF` (los valores entre comillas pueden llevar comas).
@@ -1265,9 +1266,9 @@ fn resolve_variant(url: &str, max_short: u32) -> VariantInfo {
 }
 pub fn load(app: &mut App, artist: String, album: Option<String>) {
     let gen = app.list_gen;
-    // Un álbum es cuadrado (hasta 1080); un artista, 16:9. Así la portada animada no se recorta dos veces.
-    let max_short = if album.is_some() { 1080 } else { 720 };
-    let (width, height) = if album.is_some() { (1080, 1080) } else { (1280, 720) };
+    // Un álbum es cuadrado (640); un artista, 16:9 (960x540) para mantener bajo consumo en GPU/batería.
+    let max_short = if album.is_some() { 640 } else { 540 };
+    let (width, height) = if album.is_some() { (640, 640) } else { (960, 540) };
     std::thread::spawn(move || {
         let key = format!("v3|{artist}|{}", album.as_deref().unwrap_or(""));
         // Fotograma guardado de la visita anterior: la cabecera aparece animada al instante

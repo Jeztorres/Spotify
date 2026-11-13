@@ -534,6 +534,74 @@ fn trigger_previous(app: &mut App) {
     ctl(app, Ctl::Prev);
 }
 
+#[cfg(target_os = "macos")]
+fn configure_macos_window(window: &slint::winit_030::winit::window::Window) {
+    use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use std::ffi::c_void;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if DONE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    extern "C" {
+        fn objc_getClass(name: *const std::ffi::c_char) -> *mut c_void;
+        fn sel_registerName(name: *const std::ffi::c_char) -> *mut c_void;
+        fn objc_msgSend();
+    }
+
+    let Ok(handle) = window.window_handle() else { return };
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else { return };
+    unsafe {
+        let send_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+        let send_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, i8) =
+            std::mem::transmute(objc_msgSend as *const ());
+        let send_obj: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+            std::mem::transmute(objc_msgSend as *const ());
+        let send_rgba: unsafe extern "C" fn(*mut c_void, *mut c_void, f64, f64, f64, f64) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+        let send_cstr: unsafe extern "C" fn(*mut c_void, *mut c_void, *const std::ffi::c_char) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+        let send_named: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+
+        let ns_view = appkit.ns_view.as_ptr();
+        let ns_window = send_ptr(ns_view, sel_registerName(c"window".as_ptr()));
+        if ns_window.is_null() {
+            return;
+        }
+        // Fondo sólido oscuro para que la barra de título nativa no sea transparente.
+        send_bool(ns_window, sel_registerName(c"setOpaque:".as_ptr()), 1);
+        let ns_color_cls = objc_getClass(c"NSColor".as_ptr());
+        let bg = send_rgba(
+            ns_color_cls,
+            sel_registerName(c"colorWithSRGBRed:green:blue:alpha:".as_ptr()),
+            0.067,
+            0.067,
+            0.086,
+            1.0,
+        );
+        if !bg.is_null() {
+            send_obj(ns_window, sel_registerName(c"setBackgroundColor:".as_ptr()), bg);
+        }
+        send_bool(ns_window, sel_registerName(c"setTitlebarAppearsTransparent:".as_ptr()), 1);
+
+        let ns_str_cls = objc_getClass(c"NSString".as_ptr());
+        let dark_name = send_cstr(
+            ns_str_cls,
+            sel_registerName(c"stringWithUTF8String:".as_ptr()),
+            c"NSAppearanceNameDarkAqua".as_ptr(),
+        );
+        let ns_app_cls = objc_getClass(c"NSAppearance".as_ptr());
+        let dark_app = send_named(ns_app_cls, sel_registerName(c"appearanceNamed:".as_ptr()), dark_name);
+        if !dark_app.is_null() {
+            send_obj(ns_window, sel_registerName(c"setAppearance:".as_ptr()), dark_app);
+        }
+    }
+}
+
 /// Aplica esquinas redondeadas nativas en Windows 11 y sincroniza el icono maximizar/restaurar.
 fn sync_window_frame(ui: &MainWindow) {
     use slint::winit_030::WinitWindowAccessor;
@@ -567,6 +635,7 @@ fn sync_window_frame(ui: &MainWindow) {
         #[cfg(target_os = "macos")]
         {
             window.set_decorations(true);
+            configure_macos_window(window);
             media_keys::install();
         }
         #[cfg(all(not(windows), not(target_os = "macos")))]
