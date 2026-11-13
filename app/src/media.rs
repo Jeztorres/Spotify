@@ -299,6 +299,8 @@ pub struct Media {
     height: u32,
     /// Clave del video actual (para no reiniciar el mismo álbum al cambiar de canción).
     key: Option<String>,
+    /// Si el video de la página (perfil de artista o álbum) sigue visible dentro del scroll.
+    page_visible: bool,
 }
 #[derive(Clone)]
 struct Video {
@@ -321,6 +323,7 @@ impl Media {
             width: 1280,
             height: 720,
             key: None,
+            page_visible: true,
         }
     }
     fn stop(&mut self) {
@@ -340,6 +343,7 @@ impl Drop for Media {
 }
 pub fn reset(ui: &MainWindow, app: &mut App) {
     app.media.stop();
+    app.media.page_visible = true;
     app.media.videos.clear();
     app.media.model.set_vec(vec![]);
     ui.set_motion_frame(Image::default());
@@ -879,8 +883,11 @@ fn restart_active_video(output: Output) {
         }
         match output {
             Output::Page => {
-                if matches!(ui.get_page(), 2 | 3) && !ui.get_now_playing_open() {
-                    restore(ui, app);
+                if matches!(ui.get_page(), 2 | 3)
+                    && !ui.get_now_playing_open()
+                    && app.media.page_visible
+                {
+                    start_page_source(app);
                 }
             }
             Output::Track => {
@@ -910,7 +917,10 @@ fn start(
         ensure_macos_ffmpeg();
         return;
     };
-    if !valid_stream(&variant.url) || ui.get_motion_paused() {
+    if !valid_stream(&variant.url)
+        || ui.get_motion_paused()
+        || (output == Output::Page && !app.media.page_visible)
+    {
         return;
     }
     let local_cache = cached_video_path(&variant.url);
@@ -1128,7 +1138,9 @@ fn present_frame(ui: &MainWindow, app: &mut App, output: Output, slot: &LatestFr
         return;
     }
     let visible = match output {
-        Output::Page => matches!(ui.get_page(), 2 | 3) && !ui.get_now_playing_open(),
+        Output::Page => {
+            matches!(ui.get_page(), 2 | 3) && !ui.get_now_playing_open() && media.page_visible
+        }
         Output::Track => ui.get_now_playing_open(),
     };
     if !visible || ui.get_motion_paused() {
@@ -1393,11 +1405,7 @@ pub fn stop_now(ui: &MainWindow, app: &mut App) {
     ui.set_track_motion_ready(false);
 }
 
-/// Al cerrar la pantalla completa, vuelve el movimiento de la página que quedó debajo.
-pub fn restore(ui: &MainWindow, app: &mut App) {
-    app.media.stop();
-    ui.set_motion_frame(Image::default());
-    ui.set_motion_ready(false);
+fn start_page_source(app: &mut App) {
     match app.current_source.clone() {
         Some(browse::Source::ArtistTop(a)) => load(app, a.name, None),
         Some(browse::Source::Album(a)) => load(
@@ -1407,6 +1415,17 @@ pub fn restore(ui: &MainWindow, app: &mut App) {
         ),
         _ => {}
     }
+}
+
+/// Al cerrar la pantalla completa, vuelve el movimiento de la página que quedó debajo.
+pub fn restore(ui: &MainWindow, app: &mut App) {
+    app.media.stop();
+    if !app.media.page_visible {
+        return;
+    }
+    ui.set_motion_frame(Image::default());
+    ui.set_motion_ready(false);
+    start_page_source(app);
 }
 fn valid_id(id: &str) -> bool {
     id.len() == 11
@@ -1509,20 +1528,34 @@ pub fn wire(ui: &MainWindow) {
                 app.media.stop();
                 stop_now(ui, app);
             } else {
-                match app.current_source.clone() {
-                    Some(browse::Source::ArtistTop(a)) => load(app, a.name, None),
-                    Some(browse::Source::Album(a)) => load(
-                        app,
-                        spotify_core::catalog::primary_artist(&a.artists.unwrap_or_default()),
-                        Some(a.name),
-                    ),
-                    _ => {}
+                if app.media.page_visible
+                    && matches!(ui.get_page(), 2 | 3)
+                    && !ui.get_now_playing_open()
+                {
+                    start_page_source(app);
                 }
                 if ui.get_now_playing_open() {
                     if let Some(track) = app.player.track.clone() {
                         load_now(ui, app, &track);
                     }
                 }
+            }
+        });
+    });
+    ui.on_sync_page_motion(|visible| {
+        with_app(|ui, app| {
+            if app.media.page_visible == visible {
+                return;
+            }
+            app.media.page_visible = visible;
+            if !visible {
+                app.media.stop();
+            } else if !ui.get_motion_paused()
+                && matches!(ui.get_page(), 2 | 3)
+                && !ui.get_now_playing_open()
+                && app.media.child.is_none()
+            {
+                start_page_source(app);
             }
         });
     });

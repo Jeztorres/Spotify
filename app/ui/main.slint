@@ -829,6 +829,7 @@ export component MainWindow inherits Window {
     in-out property <bool> motion-paused;
     in-out property <int> artist-catalog-tab;
     callback toggle-motion();
+    callback sync-page-motion(bool);
     in property <bool> list-is-album;
     in property <bool> list-can-pin;
     in property <bool> list-pinned;
@@ -1397,6 +1398,8 @@ export component MainWindow inherits Window {
                 }
                 if !root.has-list-banner && !root.list-editorial: Rectangle {
                     height: max(header-lay.preferred-height, root.height < 700px ? 222px : 308px);
+                    property <bool> motion-scrolled-out: root.list-is-album && self.height > 0px && -root.list-scroll >= self.height;
+                    changed motion-scrolled-out => { root.sync-page-motion(!self.motion-scrolled-out); }
                     header-lay := HorizontalLayout {
                         padding: root.height < 700px ? 16px : 24px;
                         padding-top: root.height < 700px ? 56px : 60px;
@@ -1650,6 +1653,8 @@ export component MainWindow inherits Window {
                     // Portada como en la app de Mac: fondo del color del artista y su foto nítida a la derecha,
                     // fundida hacia el texto (sin recuadro ni círculo). Con video de Apple Music, el video ocupa todo.
                     hero := Rectangle {
+                        property <bool> motion-scrolled-out: self.height > 0px && -root.artist-scroll >= self.height;
+                        changed motion-scrolled-out => { root.sync-page-motion(!self.motion-scrolled-out); }
                         // Foto completa (sin recortar) a su proporción real, del alto de la portada.
                         property <length> photo-w: min(self.width, self.height * root.list-cover.width / max(1, root.list-cover.height));
                         // Portada amplia; nombre y controles comparten el mismo degradado.
