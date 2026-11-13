@@ -1557,13 +1557,26 @@ fn key_error(ui: &MainWindow, app: &mut App) {
 fn open_in_browser(url: &str) {
     // Solo URLs https sin caracteres especiales del intérprete de comandos.
     if url.starts_with("https://") && !url.contains(['&', '^', '|', '"', ' ', '<', '>']) {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", "", url]);
         #[cfg(windows)]
-        {
+        let mut c = {
             use std::os::windows::process::CommandExt;
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/C", "start", "", url]);
             c.creation_flags(0x0800_0000);
-        }
+            c
+        };
+        #[cfg(target_os = "macos")]
+        let mut c = {
+            let mut c = std::process::Command::new("open");
+            c.arg(url);
+            c
+        };
+        #[cfg(all(not(windows), not(target_os = "macos")))]
+        let mut c = {
+            let mut c = std::process::Command::new("xdg-open");
+            c.arg(url);
+            c
+        };
         let _ = c.spawn();
     }
 }

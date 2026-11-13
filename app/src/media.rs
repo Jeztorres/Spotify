@@ -610,14 +610,86 @@ fn decoder() -> Option<PathBuf> {
         ),
     ];
     #[cfg(not(windows))]
-    let candidates = [
-        base.join("media/ffmpeg"),
-        base.join("ffmpeg"),
-        PathBuf::from("/opt/homebrew/bin/ffmpeg"),
-        PathBuf::from("/usr/local/bin/ffmpeg"),
-        PathBuf::from("/usr/bin/ffmpeg"),
-    ];
+    {
+        let candidates = [
+            base.join("media/ffmpeg"),
+            base.join("ffmpeg"),
+            base.join("../Resources/media/ffmpeg"),
+            base.join("../Resources/ffmpeg"),
+            crate::engine::data_dir().join("media/ffmpeg"),
+            PathBuf::from("/opt/homebrew/bin/ffmpeg"),
+            PathBuf::from("/usr/local/bin/ffmpeg"),
+            PathBuf::from("/usr/bin/ffmpeg"),
+        ];
+        if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+            return Some(found);
+        }
+        if let Some(path_var) = std::env::var_os("PATH") {
+            for dir in std::env::split_paths(&path_var) {
+                let candidate = dir.join("ffmpeg");
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
+    }
+    #[cfg(windows)]
     candidates.into_iter().find(|p| p.is_file())
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_macos_ffmpeg() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| {
+        let url = if cfg!(target_arch = "aarch64") {
+            "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-arm64"
+        } else {
+            "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-x64"
+        };
+        let dest = crate::engine::data_dir().join("media/ffmpeg");
+        if dest.is_file() {
+            return;
+        }
+        let Some(parent) = dest.parent() else { return };
+        if std::fs::create_dir_all(parent).is_err() {
+            return;
+        }
+        let Ok(resp) = ureq::get(url).timeout(Duration::from_secs(180)).call() else {
+            log("fondos: no se pudo descargar FFmpeg para macOS");
+            return;
+        };
+        let tmp = dest.with_extension("part");
+        let Ok(mut out) = std::fs::File::create(&tmp) else {
+            return;
+        };
+        if std::io::copy(&mut resp.into_reader().take(128 * 1024 * 1024), &mut out).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return;
+        }
+        drop(out);
+        if let Ok(meta) = std::fs::metadata(&tmp) {
+            let mut perms = meta.permissions();
+            perms.set_mode(0o755);
+            let _ = std::fs::set_permissions(&tmp, perms);
+        }
+        if std::fs::rename(&tmp, &dest).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return;
+        }
+        log("fondos: FFmpeg para macOS instalado");
+        on_ui(|ui, app| {
+            if !ui.get_now_playing_open() && matches!(ui.get_page(), 2 | 3) {
+                restore(ui, app);
+            }
+        });
+    });
 }
 #[cfg(windows)]
 struct HighResTimer {
@@ -727,6 +799,8 @@ fn start(
 ) {
     let Some(binary) = decoder() else {
         log("fondos: falta el decodificador FFmpeg");
+        #[cfg(target_os = "macos")]
+        ensure_macos_ffmpeg();
         return;
     };
     if !valid_stream(&variant.url) || ui.get_motion_paused() {

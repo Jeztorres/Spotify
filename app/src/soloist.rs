@@ -17,7 +17,12 @@ use tungstenite::{stream::MaybeTlsStream, Message};
 pub const KEY_PAGE: &str = "https://developer.spotify.com/dashboard/soloist";
 pub const DEVICE_NAME: &str = "SpotifyMac (Soloist)";
 pub const KEY_SECRET: &str = "soloistKey";
+#[cfg(windows)]
 const DOWNLOAD_URL: &str = "https://soloist-builds.spotifycdn.com/soloist_release_windows_x86_64.zip";
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const DOWNLOAD_URL_MAC_ARM64: &str = "https://soloist-builds.spotifycdn.com/soloist_release_osx_arm64.tar.gz";
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const SPOTIFY_TEAM_ID: &str = "2FNC3A47ZF";
 /// Spotify caduca cada versión a los 90 días: se baja una nueva bastante antes.
 const REFRESH_AFTER: Duration = Duration::from_secs(60 * 86400);
 const EXPIRED_EXIT_CODE: i32 = 10;
@@ -110,9 +115,92 @@ fn install() -> Result<(), String> {
     std::fs::rename(&tmp, binary()).map_err(|e| e.to_string())
 }
 
-#[cfg(not(windows))]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn install() -> Result<(), String> {
-    Err("Soloist solo está disponible en Windows por ahora.".into())
+    use std::os::unix::fs::PermissionsExt;
+
+    let resp = ureq::get(DOWNLOAD_URL_MAC_ARM64)
+        .timeout(Duration::from_secs(180))
+        .call()
+        .map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    resp.into_reader()
+        .take(64 * 1024 * 1024)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+
+    let dir = root().join("builds");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let archive = dir.join("soloist.tar.gz.part");
+    let extract_dir = dir.join("extract.part");
+    let _ = std::fs::remove_dir_all(&extract_dir);
+    std::fs::create_dir_all(&extract_dir).map_err(|e| e.to_string())?;
+    std::fs::write(&archive, &bytes).map_err(|e| e.to_string())?;
+
+    let tar_out = Command::new("/usr/bin/tar")
+        .args(["-xzf"])
+        .arg(&archive)
+        .arg("-C")
+        .arg(&extract_dir)
+        .arg("soloist")
+        .output()
+        .map_err(|e| format!("no se pudo extraer Soloist: {e}"));
+    let _ = std::fs::remove_file(&archive);
+    let tar_out = tar_out?;
+    if !tar_out.status.success() {
+        let _ = std::fs::remove_dir_all(&extract_dir);
+        return Err("el archivo descargado no contiene Soloist".into());
+    }
+
+    let extracted = extract_dir.join("soloist");
+    let tmp = dir.join("soloist.part");
+    let _ = std::fs::remove_file(&tmp);
+    std::fs::rename(&extracted, &tmp).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&extract_dir);
+        e.to_string()
+    })?;
+    let _ = std::fs::remove_dir_all(&extract_dir);
+
+    let mut perms = std::fs::metadata(&tmp).map_err(|e| e.to_string())?.permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&tmp, perms).map_err(|e| e.to_string())?;
+
+    // Solo se instala si macOS confirma la firma válida de Spotify.
+    let verify = Command::new("/usr/bin/codesign")
+        .args(["--verify", "--strict"])
+        .arg(&tmp)
+        .output()
+        .map_err(|e| format!("no se pudo verificar la firma: {e}"))?;
+    let info = Command::new("/usr/bin/codesign")
+        .args(["-dvv"])
+        .arg(&tmp)
+        .output()
+        .map_err(|e| format!("no se pudo leer la firma: {e}"))?;
+    let info_text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&info.stdout),
+        String::from_utf8_lossy(&info.stderr)
+    );
+    if !verify.status.success()
+        || !info_text.contains(&format!("TeamIdentifier={SPOTIFY_TEAM_ID}"))
+        || !info_text.contains("Authority=Developer ID Application: Spotify")
+    {
+        let _ = std::fs::remove_file(&tmp);
+        return Err("la firma digital de Soloist no es válida; no se instaló".into());
+    }
+
+    let _ = std::fs::remove_file(binary());
+    std::fs::rename(&tmp, binary()).map_err(|e| e.to_string())
+}
+
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+fn install() -> Result<(), String> {
+    Err("Spotify solo publica Soloist para Mac con Apple Silicon (arm64).".into())
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
+fn install() -> Result<(), String> {
+    Err("Soloist solo está disponible en Windows y macOS (Apple Silicon) por ahora.".into())
 }
 
 /// Cierra un Soloist nuestro que siga abierto sin la app (según `soloist.pid`).
@@ -126,6 +214,18 @@ fn stop_orphan() {
         if list.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("soloist.exe")) {
             let _ = no_window(Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"])).output();
             std::thread::sleep(Duration::from_millis(400));
+        }
+    }
+    #[cfg(unix)]
+    {
+        let Ok(text) = std::fs::read_to_string(data().join("soloist.pid")) else { return };
+        let Ok(pid) = text.trim().parse::<u32>() else { return };
+        let pid_str = pid.to_string();
+        let list = Command::new("ps").args(["-p", &pid_str, "-o", "comm="]).output();
+        if list.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("soloist")) {
+            let _ = Command::new("kill").args(["-TERM", &pid_str]).output();
+            std::thread::sleep(Duration::from_millis(400));
+            let _ = Command::new("kill").args(["-KILL", &pid_str]).output();
         }
     }
 }
