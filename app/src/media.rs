@@ -606,40 +606,96 @@ fn valid_stream(url: &str) -> bool {
 fn decoder() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let base = exe.parent()?;
-    #[cfg(windows)]
-    let candidates = [
-        base.join("media/ffmpeg.exe"),
-        base.join(
-            "../../tools/media/runtime/ffmpeg-master-latest-win64-lgpl-shared/bin/ffmpeg.exe",
-        ),
+    let bin_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    let mut candidates = vec![
+        base.join("media").join(bin_name),
+        base.join(bin_name),
+        crate::engine::data_dir().join("media").join(bin_name),
     ];
+    #[cfg(windows)]
+    candidates.push(base.join(
+        "../../tools/media/runtime/ffmpeg-master-latest-win64-lgpl-shared/bin/ffmpeg.exe",
+    ));
     #[cfg(not(windows))]
-    {
-        let candidates = [
-            base.join("media/ffmpeg"),
-            base.join("ffmpeg"),
-            base.join("../Resources/media/ffmpeg"),
-            base.join("../Resources/ffmpeg"),
-            crate::engine::data_dir().join("media/ffmpeg"),
-            PathBuf::from("/opt/homebrew/bin/ffmpeg"),
-            PathBuf::from("/usr/local/bin/ffmpeg"),
-            PathBuf::from("/usr/bin/ffmpeg"),
-        ];
-        if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
-            return Some(found);
-        }
-        if let Some(path_var) = std::env::var_os("PATH") {
-            for dir in std::env::split_paths(&path_var) {
-                let candidate = dir.join("ffmpeg");
-                if candidate.is_file() {
-                    return Some(candidate);
-                }
+    candidates.extend([
+        base.join("../Resources/media/ffmpeg"),
+        base.join("../Resources/ffmpeg"),
+        PathBuf::from("/opt/homebrew/bin/ffmpeg"),
+        PathBuf::from("/usr/local/bin/ffmpeg"),
+        PathBuf::from("/usr/bin/ffmpeg"),
+    ]);
+    if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+        return Some(found);
+    }
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(bin_name);
+            if candidate.is_file() {
+                return Some(candidate);
             }
         }
-        None
     }
-    #[cfg(windows)]
-    candidates.into_iter().find(|p| p.is_file())
+    None
+}
+
+#[cfg(windows)]
+fn ensure_windows_ffmpeg() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| {
+        let dest = crate::engine::data_dir().join("media/ffmpeg.exe");
+        if dest.is_file() {
+            return;
+        }
+        let Some(parent) = dest.parent() else { return };
+        if std::fs::create_dir_all(parent).is_err() {
+            return;
+        }
+        let url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+        let Ok(resp) = ureq::get(url).timeout(Duration::from_secs(240)).call() else {
+            log("fondos: no se pudo descargar FFmpeg para Windows");
+            return;
+        };
+        let zip_tmp = dest.with_extension("zip.part");
+        let Ok(mut zip_out) = std::fs::File::create(&zip_tmp) else {
+            return;
+        };
+        if std::io::copy(&mut resp.into_reader().take(256 * 1024 * 1024), &mut zip_out).is_err() {
+            let _ = std::fs::remove_file(&zip_tmp);
+            return;
+        }
+        drop(zip_out);
+        let exe_tmp = dest.with_extension("exe.part");
+        let extracted = (|| -> Option<()> {
+            let file = std::fs::File::open(&zip_tmp).ok()?;
+            let mut archive = zip::ZipArchive::new(file).ok()?;
+            for i in 0..archive.len() {
+                let mut entry = archive.by_index(i).ok()?;
+                if entry.name().ends_with("/bin/ffmpeg.exe") || entry.name() == "ffmpeg.exe" {
+                    let mut out = std::fs::File::create(&exe_tmp).ok()?;
+                    std::io::copy(&mut entry, &mut out).ok()?;
+                    return Some(());
+                }
+            }
+            None
+        })();
+        let _ = std::fs::remove_file(&zip_tmp);
+        if extracted.is_none() || std::fs::rename(&exe_tmp, &dest).is_err() {
+            let _ = std::fs::remove_file(&exe_tmp);
+            log("fondos: no se pudo extraer FFmpeg para Windows");
+            return;
+        }
+        log("fondos: FFmpeg para Windows instalado");
+        on_ui(|ui, app| {
+            if !ui.get_now_playing_open() && matches!(ui.get_page(), 2 | 3) && app.media.page_visible {
+                restore(ui, app);
+            }
+        });
+    });
 }
 
 #[cfg(target_os = "macos")]
@@ -915,6 +971,8 @@ fn start(
         log("fondos: falta el decodificador FFmpeg");
         #[cfg(target_os = "macos")]
         ensure_macos_ffmpeg();
+        #[cfg(windows)]
+        ensure_windows_ffmpeg();
         return;
     };
     if !valid_stream(&variant.url)

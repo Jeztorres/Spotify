@@ -81,9 +81,14 @@ jobs:
       - name: Package Windows ZIP
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path win_staging | Out-Null
+          New-Item -ItemType Directory -Force -Path win_staging/media | Out-Null
           Copy-Item target/release/spotify-win.exe win_staging/
           Copy-Item Engine/target/release/spotifymac-engine.exe win_staging/
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
+          $ffmpegExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffmpeg.exe -Recurse | Select-Object -First 1
+          Copy-Item $ffmpegExe.FullName win_staging/media/ffmpeg.exe
+          Remove-Item -Recurse -Force ffmpeg.zip, ffmpeg_tmp
           Compress-Archive -Path win_staging/* -DestinationPath SpotifyMac-Windows.zip -Force
 
       - name: Upload Windows artifacts
