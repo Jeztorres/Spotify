@@ -923,6 +923,16 @@ fn start(
     } else {
         variant.url.clone()
     };
+    let battery_saver = ui.get_pref_battery_saver();
+    let (target_w, target_h) = if battery_saver {
+        if target_w == target_h {
+            (target_w.min(640), target_h.min(640))
+        } else {
+            (target_w.min(960), target_h.min(540))
+        }
+    } else {
+        (target_w, target_h)
+    };
     let use_ffmpeg_re = variant.fps.is_none_or(|f| f <= 1.0);
     let (width, height, filter) = if variant.width > 0 && variant.height > 0 {
         if variant.width <= target_w && variant.height <= target_h {
@@ -981,7 +991,7 @@ fn start(
     if let Some(f) = filter {
         vf_parts.push(f);
     }
-    if variant.fps.is_some_and(|f| f > 15.0) {
+    if battery_saver && variant.fps.is_some_and(|f| f > 15.0) {
         vf_parts.push("fps=15".into());
     }
     if !vf_parts.is_empty() {
@@ -1032,7 +1042,10 @@ fn start(
     }));
     media.frames = Some(latest.clone());
     let frame_bytes = width as usize * height as usize * 4;
-    let mut paced_fps = variant.fps.filter(|f| *f > 1.0 && f.is_finite()).map(|f| f.min(15.0));
+    let mut paced_fps = variant.fps.filter(|f| *f > 1.0 && f.is_finite());
+    if battery_saver {
+        paced_fps = paced_fps.map(|f| f.min(15.0));
+    }
     if use_ffmpeg_re && paced_fps.is_none() {
         paced_fps = None;
     }
@@ -1124,13 +1137,15 @@ fn present_frame(ui: &MainWindow, app: &mut App, output: Output, slot: &LatestFr
         media.key = None;
         return;
     }
-    let minimized = ui
-        .window()
-        .with_winit_window(|w| w.is_minimized().unwrap_or(false))
-        .unwrap_or(false);
-    if minimized {
-        let _ = slot.lock().unwrap().take();
-        return;
+    if ui.get_pref_battery_saver() {
+        let minimized = ui
+            .window()
+            .with_winit_window(|w| w.is_minimized().unwrap_or(false))
+            .unwrap_or(false);
+        if minimized {
+            let _ = slot.lock().unwrap().take();
+            return;
+        }
     }
     let Some(frame) = slot.lock().unwrap().take() else { return };
     let (width, height) = (media.width, media.height);
@@ -1162,8 +1177,9 @@ fn present_frame(ui: &MainWindow, app: &mut App, output: Output, slot: &LatestFr
         }
     }
     // Redibujado inmediato en winit para evitar la cuantización del TimerBasedFrameThrottle de Slint en Windows.
-    #[cfg(windows)]
-    ui.window().with_winit_window(|w| w.request_redraw());
+    if cfg!(windows) || !ui.get_pref_battery_saver() {
+        ui.window().with_winit_window(|w| w.request_redraw());
+    }
 }
 /// Atributos `CLAVE=valor` de una línea `#EXT-X-STREAM-INF` (los valores entre comillas pueden llevar comas).
 fn hls_attributes(line: &str) -> Vec<(String, String)> {
@@ -1266,9 +1282,9 @@ fn resolve_variant(url: &str, max_short: u32) -> VariantInfo {
 }
 pub fn load(app: &mut App, artist: String, album: Option<String>) {
     let gen = app.list_gen;
-    // Un álbum es cuadrado (640); un artista, 16:9 (960x540) para mantener bajo consumo en GPU/batería.
-    let max_short = if album.is_some() { 640 } else { 540 };
-    let (width, height) = if album.is_some() { (640, 640) } else { (960, 540) };
+    // Un álbum es cuadrado (hasta 1080); un artista, 16:9. Así la portada animada no se recorta dos veces.
+    let max_short = if album.is_some() { 1080 } else { 720 };
+    let (width, height) = if album.is_some() { (1080, 1080) } else { (1280, 720) };
     std::thread::spawn(move || {
         let key = format!("v3|{artist}|{}", album.as_deref().unwrap_or(""));
         // Fotograma guardado de la visita anterior: la cabecera aparece animada al instante

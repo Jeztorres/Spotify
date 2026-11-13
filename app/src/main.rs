@@ -1141,20 +1141,26 @@ fn render_player(ui: &MainWindow, app: &mut App) {
     // El reloj de 1 s solo corre mientras suena: en pausa la app no despierta.
     if app.player.playing {
         if !app.timer.running() {
-            // Tic de 125 ms: suficiente para letras fluidas y reduce despertares de CPU en batería.
+            // Tic de 50 ms para fluidez total; en modo ahorro de batería omite minimizado y espacia letras.
             let mut tick = 0u32;
-            app.timer.start(TimerMode::Repeated, Duration::from_millis(125), move || {
+            app.timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
                 tick = tick.wrapping_add(1);
                 with_app(|ui, app| {
-                    use slint::winit_030::WinitWindowAccessor;
-                    let minimized = ui
-                        .window()
-                        .with_winit_window(|w| w.is_minimized().unwrap_or(false))
-                        .unwrap_or(false);
-                    if minimized {
-                        return;
-                    }
-                    if tick % 8 == 0 {
+                    if ui.get_pref_battery_saver() {
+                        use slint::winit_030::WinitWindowAccessor;
+                        let minimized = ui
+                            .window()
+                            .with_winit_window(|w| w.is_minimized().unwrap_or(false))
+                            .unwrap_or(false);
+                        if minimized {
+                            return;
+                        }
+                        if tick % 20 == 0 {
+                            render_progress(ui, app);
+                        } else if tick % 3 == 0 && lyrics_visible(ui) {
+                            lyrics::update_active(ui, app);
+                        }
+                    } else if tick % 20 == 0 {
                         render_progress(ui, app);
                     } else if lyrics_visible(ui) {
                         lyrics::update_active(ui, app);

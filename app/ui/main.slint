@@ -1047,6 +1047,7 @@ export component MainWindow inherits Window {
     in property <bool> can-go-forward: false;
     // ---- Configuración y perfil ----
     in-out property <bool> pref-motion: true;
+    in-out property <bool> pref-battery-saver: false;
     in-out property <bool> pref-lyrics: false;
     in-out property <bool> pref-tray: true;
     in-out property <bool> pref-normalise: true;
@@ -1943,6 +1944,31 @@ export component MainWindow inherits Window {
                             SettingRow {
                                 title: "Mostrar barra lateral"; detail: "Tu biblioteca y la navegación a la izquierda.";
                                 SwitchBox { on <=> root.sidebar-visible; toggled => { root.pref-changed(); } }
+                            }
+                        }
+                        SettingGroup {
+                            title: "Batería y rendimiento";
+                            SettingRow {
+                                title: "Modo ahorro de batería";
+                                detail: "Reduce la calidad de videos de fondo (540p / 15 FPS), pausa el dibujo al minimizar y espacia el reloj de letras.";
+                                SwitchBox { on <=> root.pref-battery-saver; toggled => { root.pref-changed(); } }
+                            }
+                            SettingRow {
+                                title: "Ahorro máximo (apagar animaciones)";
+                                detail: "Desactiva portadas y videos animados de Apple Music y activa el modo ahorro de batería.";
+                                Button {
+                                    text: root.pref-battery-saver && !root.pref-motion ? "Restaurar fluidez" : "Activar ahorro";
+                                    clicked => {
+                                        if root.pref-battery-saver && !root.pref-motion {
+                                            root.pref-battery-saver = false;
+                                            root.pref-motion = true;
+                                        } else {
+                                            root.pref-battery-saver = true;
+                                            root.pref-motion = false;
+                                        }
+                                        root.pref-changed();
+                                    }
+                                }
                             }
                         }
                         SettingGroup {

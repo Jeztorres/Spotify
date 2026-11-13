@@ -62,6 +62,7 @@ fn load_prefs(ui: &MainWindow) {
     let get_f = |key: &str, default: f32| saved.as_ref().and_then(|v| v.get(key)).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(default);
     let get_i = |key: &str, default: i32| saved.as_ref().and_then(|v| v.get(key)).and_then(Value::as_i64).map(|x| x as i32).unwrap_or(default);
     ui.set_pref_motion(get("motion", true));
+    ui.set_pref_battery_saver(get("battery_saver", false));
     ui.set_pref_lyrics(get("lyrics_on_open", false));
     ui.set_sidebar_visible(get("sidebar", true));
     ui.set_show_translation(get("translate_lyrics", false));
@@ -93,6 +94,7 @@ fn save_prefs(ui: &MainWindow) {
     let bands = get_eq_bands(ui);
     let value = json!({
         "motion": ui.get_pref_motion(),
+        "battery_saver": ui.get_pref_battery_saver(),
         "lyrics_on_open": ui.get_pref_lyrics(),
         "sidebar": sidebar,
         "translate_lyrics": ui.get_show_translation(),
