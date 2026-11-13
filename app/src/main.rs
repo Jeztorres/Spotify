@@ -1196,10 +1196,20 @@ fn set_ready(ui: &MainWindow, app: &mut App) {
     }
     settings::preload(ui, app);
     settings::sync_engine_prefs(ui, app);
-    // Si ya se sabe que librespot no da audio en este equipo, Soloist arranca desde el principio.
-    if app.prefer_soloist && app.soloist.is_none() {
+    // Inicia Soloist desde el arranque si ya hay clave; si aún no se configura, abre la bienvenida.
+    if app.soloist.is_none() {
         if let Some(key) = secrets::get(soloist::KEY_SECRET) {
+            if !app.prefer_soloist {
+                app.prefer_soloist = true;
+                let _ = std::fs::write(prefer_flag_path(), b"1");
+            }
+            app.solo_setup = true;
             start_soloist(app, key);
+        } else {
+            app.solo_setup = true;
+            ui.set_soloist_step("key".into());
+            ui.set_soloist_status(String::new().into());
+            ui.set_soloist_open(true);
         }
     }
 }

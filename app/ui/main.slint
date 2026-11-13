@@ -3101,28 +3101,28 @@ export component MainWindow inherits Window {
         }
     }
 
-    // ---- Soloist: asistente de configuración (se cierra solo al quedar listo) ----
+    // ---- Soloist: bienvenida y configuración inicial (se cierra solo al quedar listo) ----
     if root.soloist-open: Rectangle {
         width: parent.width;
         height: parent.height;
-        background: #000000b0;
+        background: Theme.side;
         TouchArea { }
 
         Rectangle {
-            width: min(540px, parent.width - 48px);
+            width: min(600px, parent.width - 48px);
             height: card-box.preferred-height + 48px;
-            border-radius: 16px;
+            border-radius: 18px;
             background: Theme.card;
             card-box := VerticalLayout {
                 padding: 24px;
                 spacing: 14px;
 
                 Text {
-                    text: root.soloist-step == "key" ? "Paso 1 de 2 · Tu clave de Soloist"
-                        : root.soloist-step == "pair" ? "Paso 2 de 2 · Elige este equipo en tu móvil"
-                        : root.soloist-step == "ready" ? "Soloist está activo"
+                    text: root.soloist-step == "key" ? "Bienvenido a SpotifyMac · Paso 1 de 2"
+                        : root.soloist-step == "pair" ? "Paso 2 de 2 · Vincula tu teléfono"
+                        : root.soloist-step == "ready" ? "¡Todo listo! Soloist está activo"
                         : root.soloist-step == "error" ? "No se pudo activar Soloist"
-                        : "Validando tu clave…";
+                        : "Preparando reproductor Soloist…";
                     font-size: 21px; font-weight: 800; color: white; wrap: word-wrap;
                 }
 
@@ -3130,40 +3130,40 @@ export component MainWindow inherits Window {
                 if root.soloist-step == "key": VerticalLayout {
                     spacing: 12px;
                     Text {
-                        text: "Spotify no deja que el reproductor integrado suene con tu cuenta. Soloist es el reproductor oficial de Spotify y lo resuelve. Se configura una sola vez y necesitas Premium.";
+                        text: "Para que la música suene directamente en tu equipo, SpotifyMac usa Soloist (el reproductor oficial de Spotify). Solo se configura una vez y requiere cuenta Premium.";
                         font-size: 13px; color: Theme.sub; wrap: word-wrap;
                     }
                     Text {
-                        text: "1. Pulsa «Abrir página de clave».\n2. Inicia sesión con tu cuenta Premium y copia la clave que te da Spotify.\n3. Vuelve aquí, pégala en el cuadro y pulsa «Validar».";
-                        font-size: 14px; color: white; wrap: word-wrap;
+                        text: "¿Cómo sacar tu clave (API Key)?\n1. Pulsa «Abrir página de clave» (se abrirá developer.spotify.com en tu navegador).\n2. Inicia sesión con tu misma cuenta de Spotify Premium.\n3. Si te muestra términos o condiciones, acéptalos y pulsa el botón para generar/mostrar tu clave de Soloist.\n4. Copia la clave completa, vuelve aquí, pégala abajo y pulsa «Validar y continuar».";
+                        font-size: 13.5px; color: white; wrap: word-wrap;
                     }
-                    key-input := LineEdit { placeholder-text: "Pega aquí tu clave"; }
+                    key-input := LineEdit { placeholder-text: "Pega aquí tu clave de Soloist"; }
                     Text {
-                        text: "Tu clave es solo tuya: se guarda en el llavero de credenciales del sistema y no sale de este equipo.";
+                        text: "Se guarda de forma privada en este equipo. Cuando actualices la app no tendrás que volver a ingresarla (solo si la desinstalas o borras sus datos).";
                         font-size: 12px; color: Theme.green-bright; wrap: word-wrap;
                     }
                     HorizontalLayout {
                         spacing: 10px;
                         alignment: end;
                         Rectangle {
-                            width: 160px; height: 40px; border-radius: 20px;
+                            width: 170px; height: 40px; border-radius: 20px;
                             background: pg.has-hover ? Theme.hover : Theme.field;
                             Text { text: "Abrir página de clave"; color: white; font-size: 13px; font-weight: 600; }
                             pg := TouchArea { clicked => { root.soloist-open-page(); } }
                         }
                         Rectangle {
-                            width: 100px; height: 40px; border-radius: 20px;
+                            width: 155px; height: 40px; border-radius: 20px;
                             background: key-input.text == "" ? Theme.field : (sv.has-hover ? Theme.green-bright : Theme.green);
-                            Text { text: "Validar"; color: key-input.text == "" ? Theme.sub : black; font-size: 13px; font-weight: 700; }
+                            Text { text: "Validar y continuar"; color: key-input.text == "" ? Theme.sub : black; font-size: 13px; font-weight: 700; }
                             sv := TouchArea {
                                 enabled: key-input.text != "";
                                 clicked => { root.soloist-save(key-input.text); key-input.text = ""; }
                             }
                         }
                         Rectangle {
-                            width: 80px; height: 40px; border-radius: 20px;
+                            width: 90px; height: 40px; border-radius: 20px;
                             background: cl1.has-hover ? Theme.hover : transparent;
-                            Text { text: "Cancelar"; color: Theme.sub; font-size: 13px; font-weight: 600; }
+                            Text { text: "Más tarde"; color: Theme.sub; font-size: 13px; font-weight: 600; }
                             cl1 := TouchArea { clicked => { root.soloist-open = false; } }
                         }
                     }
@@ -3173,18 +3173,18 @@ export component MainWindow inherits Window {
                 if root.soloist-step == "starting": VerticalLayout {
                     spacing: 12px;
                     Text { text: root.soloist-status; font-size: 14px; color: white; wrap: word-wrap; }
-                    Text { text: "Esto tarda unos segundos la primera vez (se descarga desde los servidores de Spotify)."; font-size: 12px; color: Theme.sub; wrap: word-wrap; }
+                    Text { text: "Esto tarda unos segundos la primera vez (se descarga el reproductor oficial desde los servidores de Spotify)."; font-size: 12px; color: Theme.sub; wrap: word-wrap; }
                 }
 
                 // ---- Paso 2: emparejar ----
                 if root.soloist-step == "pair": VerticalLayout {
                     spacing: 12px;
-                    Text { text: "Clave guardada. Falta elegir este equipo una sola vez:"; font-size: 13px; color: Theme.sub; wrap: word-wrap; }
+                    Text { text: "Clave guardada. Ahora vincula tu teléfono una sola vez para activar el audio y el autoplay:"; font-size: 13px; color: Theme.sub; wrap: word-wrap; }
                     Text {
-                        text: "1. En tu móvil abre Spotify (con la misma Wi-Fi que este equipo).\n2. Reproduce cualquier canción y toca el icono de dispositivos.\n3. Elige «SpotifyMac (Soloist)».";
-                        font-size: 14px; color: white; wrap: word-wrap;
+                        text: "1. Conecta tu teléfono y esta computadora a la misma red Wi-Fi.\n2. Abre la app oficial de Spotify en tu teléfono (con tu misma cuenta).\n3. Pon a reproducir cualquier canción en el teléfono.\n4. Toca el icono de Dispositivos (altavoz/pantalla abajo a la izquierda).\n5. En la lista, elige «SpotifyMac (Soloist)».\n\nSi no aparece enseguida, espera 5 segundos y vuelve a abrir el menú de dispositivos en tu teléfono.";
+                        font-size: 13.5px; color: white; wrap: word-wrap;
                     }
-                    Text { text: "Esta ventana se cerrará sola cuando termine."; font-size: 12px; color: Theme.green-bright; wrap: word-wrap; }
+                    Text { text: "En cuanto se vincule, esta pantalla se cerrará sola y entrarás al inicio de la app listo para reproducir."; font-size: 12px; color: Theme.green-bright; wrap: word-wrap; }
                     HorizontalLayout {
                         spacing: 10px;
                         alignment: end;
