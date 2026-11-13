@@ -963,7 +963,9 @@ fn start(
             "250000".into(),
         ]);
     }
-    args.extend(["-threads".into(), "0".into()]);
+    args.extend(["-threads".into(), "2".into()]);
+    #[cfg(target_os = "macos")]
+    args.extend(["-hwaccel".into(), "videotoolbox".into()]);
     if use_ffmpeg_re {
         args.push("-re".into());
     }
@@ -975,9 +977,16 @@ fn start(
         "-an".into(),
         "-sn".into(),
     ]);
+    let mut vf_parts = Vec::new();
     if let Some(f) = filter {
+        vf_parts.push(f);
+    }
+    if variant.fps.is_some_and(|f| f > 24.0) {
+        vf_parts.push("fps=24".into());
+    }
+    if !vf_parts.is_empty() {
         args.push("-vf".into());
-        args.push(f);
+        args.push(vf_parts.join(","));
     }
     args.extend([
         "-pix_fmt".into(),
@@ -1023,7 +1032,11 @@ fn start(
     }));
     media.frames = Some(latest.clone());
     let frame_bytes = width as usize * height as usize * 4;
-    if let Some(fps) = variant.fps.filter(|f| *f > 1.0 && f.is_finite()) {
+    let mut paced_fps = variant.fps.filter(|f| *f > 1.0 && f.is_finite()).map(|f| f.min(24.0));
+    if use_ffmpeg_re && paced_fps.is_none() {
+        paced_fps = None;
+    }
+    if let Some(fps) = paced_fps {
         // Buffer adelantado de 4 fotogramas absorbe microtirones de red/segmentos mientras el hilo
         // temporizador mantiene la cadencia real del video sin sufrir el límite de 15.6 ms de FFmpeg en Windows.
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(4);
@@ -1109,6 +1122,14 @@ fn present_frame(ui: &MainWindow, app: &mut App, output: Output, slot: &LatestFr
         media.stop();
         // Sin clave, al volver a abrir la pantalla completa se reinicia el video.
         media.key = None;
+        return;
+    }
+    let minimized = ui
+        .window()
+        .with_winit_window(|w| w.is_minimized().unwrap_or(false))
+        .unwrap_or(false);
+    if minimized {
+        let _ = slot.lock().unwrap().take();
         return;
     }
     let Some(frame) = slot.lock().unwrap().take() else { return };
