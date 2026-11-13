@@ -24,4 +24,5 @@ fn main() {
 
     let info = format!("v{version} · {commit} · {build}");
     println!("cargo:rustc-env=APP_BUILD_INFO={info}");
+    println!("cargo:rustc-env=APP_COMMIT_HASH={commit}");
 }

@@ -113,6 +113,9 @@ jobs:
           tag_name: latest
           name: SpotifyMac Latest
           make_latest: true
+          body: |
+            Commit: ${{ github.sha }}
+            Build: #${{ github.run_number }}
           files: |
             artifacts/macos-release/SpotifyMac-macOS.dmg
             artifacts/windows-release/SpotifyMac-Windows.zip

@@ -17,6 +17,7 @@ mod secrets;
 mod settings;
 mod soloist;
 mod translate;
+mod updater;
 
 use engine::Engine;
 use soloist::Soloist;
@@ -1733,6 +1734,7 @@ pub(crate) fn close_now_playing_view(ui: &MainWindow, app: &mut App, restore_pag
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    updater::cleanup_old_binaries();
     #[cfg(windows)]
     let _timer_period = WinTimerPeriod::acquire();
     let ui = MainWindow::new()?;
@@ -1860,6 +1862,7 @@ fn main() -> Result<(), slint::PlatformError> {
     connect::wire(&ui);
     settings::wire(&ui);
     lyrics::wire(&ui);
+    updater::wire(&ui);
     ui.on_open_now_playing(|| {
         with_app(|ui, app| {
             ui.set_now_playing_open(true);

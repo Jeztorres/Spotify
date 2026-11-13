@@ -849,6 +849,10 @@ export component MainWindow inherits Window {
     in property <string> album-copyright;
     in property <string> album-artist;
     in property <string> app-version;
+    in property <bool> update-available;
+    in property <bool> update-busy;
+    in property <string> update-status;
+    callback check-update();
     in property <[TrackEntry]> suggestion-rows;
     in property <string> suggestion-message;
     in property <bool> suggestions-loading;
@@ -2101,7 +2105,12 @@ export component MainWindow inherits Window {
                             title: "Acerca de";
                             SettingRow {
                                 title: "Versión instalada";
-                                detail: root.app-version == "" ? "v0.1.0" : root.app-version;
+                                detail: root.update-status != "" ? (root.app-version + " · " + root.update-status) : (root.app-version == "" ? "v0.1.0" : root.app-version);
+                                Button {
+                                    text: root.update-busy ? "Actualizando…" : (root.update-available ? "Actualizar ahora" : "Buscar actualización");
+                                    enabled: !root.update-busy;
+                                    clicked => { root.check-update(); }
+                                }
                             }
                         }
                         Text { text: "SpotifyMac " + root.app-version + " · Requiere Spotify Premium."; color: Theme.sub; font-size: 11px; horizontal-alignment: left; }
