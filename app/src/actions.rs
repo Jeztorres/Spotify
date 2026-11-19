@@ -1,6 +1,6 @@
 //! Acciones de biblioteca, favoritos, playlists y menús. Las mutaciones esperan confirmación del motor.
 use super::*;
-use spotify_core::{SpArtist, SpImage, SpOwner};
+use spotify_core::{ArtistItem, SpArtist, SpImage, SpOwner};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Default)]
@@ -15,6 +15,11 @@ pub struct Actions {
     artists: Vec<SpArtist>,
     picker_artists: Vec<SpArtist>,
     picker_track: Option<Track>,
+    menu_artist_model: Rc<VecModel<ArtistChoice>>,
+    picker_artist_model: Rc<VecModel<ArtistChoice>>,
+    artist_avatars: HashMap<String, Image>,
+    artist_avatars_loading: HashSet<String>,
+    info_artist_id: Option<String>,
     editing: Option<Playlist>,
     adding: Option<Track>,
     cover: Option<Vec<u8>>,
@@ -245,13 +250,10 @@ fn open_track_menu_page(ui: &MainWindow, app: &mut App, track: Track, page: i32)
         .filter(|a| a.id.is_some())
         .cloned()
         .collect();
-    ui.set_menu_artists(ModelRc::new(VecModel::from(
-        app.actions
-            .artists
-            .iter()
-            .map(|a| slint::SharedString::from(a.name.as_str()))
-            .collect::<Vec<_>>(),
-    )));
+    let choices = artist_choices(app, &app.actions.artists);
+    app.actions.menu_artist_model.set_vec(choices);
+    ui.set_menu_artists(ModelRc::from(app.actions.menu_artist_model.clone()));
+    fetch_artist_avatars(app, &app.actions.artists.clone());
     if page == 1 {
         populate_destinations(ui, app);
     }
@@ -327,6 +329,20 @@ fn menu_action(ui: &MainWindow, app: &mut App, action: i32) {
             ui.set_info_title(format!("Créditos · {}", track.name).into());
             ui.set_info_text("Buscando la grabación exacta en MusicBrainz…".into());
             ui.set_info_url("".into());
+            let primary_id = track
+                .artists
+                .first()
+                .and_then(|a| a.id.clone())
+                .filter(|id| !id.is_empty());
+            app.actions.info_artist_id = primary_id.clone();
+            ui.set_info_avatar(
+                primary_id
+                    .as_deref()
+                    .and_then(|id| app.actions.artist_avatars.get(id))
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+            fetch_artist_avatars(app, &track.artists);
             app.actions.info_gen += 1;
             let gen = app.actions.info_gen;
             std::thread::spawn(move || {
@@ -420,6 +436,123 @@ fn album_name_for_track(track: &Track) -> Option<String> {
         || album.uri.as_deref().is_some_and(|u| u.starts_with("spotify:album:"));
     (has_id && !album.name.is_empty()).then(|| album.name.clone())
 }
+fn artist_choices(app: &App, artists: &[SpArtist]) -> Vec<ArtistChoice> {
+    artists
+        .iter()
+        .map(|a| {
+            let avatar = a
+                .id
+                .as_deref()
+                .and_then(|id| app.actions.artist_avatars.get(id))
+                .cloned()
+                .unwrap_or_default();
+            ArtistChoice {
+                name: a.name.as_str().into(),
+                avatar,
+            }
+        })
+        .collect()
+}
+
+fn update_artist_choice_model(model: &VecModel<ArtistChoice>, artists: &[SpArtist], id: &str, avatar: &Image) {
+    for (i, artist) in artists.iter().enumerate() {
+        if artist.id.as_deref() == Some(id) {
+            if let Some(mut row) = model.row_data(i) {
+                row.avatar = avatar.clone();
+                model.set_row_data(i, row);
+            }
+        }
+    }
+}
+
+fn apply_artist_avatar(ui: &MainWindow, app: &mut App, id: &str, avatar: Image) {
+    app.actions.artist_avatars.insert(id.to_owned(), avatar.clone());
+    update_artist_choice_model(&app.actions.menu_artist_model, &app.actions.artists, id, &avatar);
+    update_artist_choice_model(&app.actions.picker_artist_model, &app.actions.picker_artists, id, &avatar);
+    if ui.get_info_open() && app.actions.info_artist_id.as_deref() == Some(id) {
+        ui.set_info_avatar(avatar);
+    }
+}
+
+fn fetch_artist_avatars(app: &mut App, artists: &[SpArtist]) {
+    let mut ids = Vec::new();
+    for artist in artists {
+        let Some(id) = artist.id.as_deref().filter(|id| !id.is_empty()) else {
+            continue;
+        };
+        if !app.actions.artist_avatars.contains_key(id)
+            && app.actions.artist_avatars_loading.insert(id.to_owned())
+        {
+            ids.push(id.to_owned());
+        }
+    }
+    if ids.is_empty() {
+        return;
+    }
+    let Some(engine) = app.engine.clone() else {
+        for id in ids {
+            app.actions.artist_avatars_loading.remove(&id);
+        }
+        return;
+    };
+    let ids_cleanup = ids.clone();
+    std::thread::spawn(move || {
+        let reply = engine.call("artists", json!({ "ids": ids }), Duration::from_secs(10));
+        let parsed: Vec<(String, Option<String>)> = if let Ok(result) = reply {
+            result
+                .get("artists")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|v| serde_json::from_value::<ArtistItem>(v.clone()).ok())
+                .map(|a| {
+                    let url = a.image_url().map(str::to_owned);
+                    (a.id, url)
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+        on_ui(move |_ui, app| {
+            for id in &ids_cleanup {
+                app.actions.artist_avatars_loading.remove(id);
+            }
+            for (id, url) in parsed {
+                let Some(url) = url else { continue; };
+                let id_for_cb = id.clone();
+                load_cover_with_priority(app, &url, 64, true, move |ui, app, decoded| {
+                    let img = to_image(&images::circle(decoded));
+                    apply_artist_avatar(ui, app, &id_for_cb, img);
+                });
+            }
+        });
+    });
+}
+
+fn open_artist_picker(ui: &MainWindow, app: &mut App, artists: Vec<SpArtist>, album: Option<String>, track: Option<Track>) {
+    app.actions.picker_artists = artists;
+    app.actions.picker_track = track.clone();
+    ui.set_artist_picker_album(album.clone().unwrap_or_default().into());
+    ui.set_artist_picker_album_cover(Image::default());
+    let choices = artist_choices(app, &app.actions.picker_artists);
+    app.actions.picker_artist_model.set_vec(choices);
+    ui.set_artist_picker_items(ModelRc::from(app.actions.picker_artist_model.clone()));
+    ui.set_artist_picker_open(true);
+    fetch_artist_avatars(app, &app.actions.picker_artists.clone());
+    if album.is_some() {
+        if let Some(url) = track.as_ref().and_then(|t| t.image_url()).map(str::to_owned) {
+            let picker_uri = track.as_ref().map(|t| t.uri.clone());
+            load_cover_with_priority(app, &url, 64, true, move |ui, app, decoded| {
+                if ui.get_artist_picker_open()
+                    && app.actions.picker_track.as_ref().map(|t| &t.uri) == picker_uri.as_ref()
+                {
+                    ui.set_artist_picker_album_cover(to_image(decoded));
+                }
+            });
+        }
+    }
+}
+
 fn prompt_or_open_artist(ui: &MainWindow, app: &mut App, kind: i32, index: usize) {
     let artists = artists_for(app, kind, index);
     let track = track_at(app, kind, index);
@@ -429,36 +562,19 @@ fn prompt_or_open_artist(ui: &MainWindow, app: &mut App, kind: i32, index: usize
         None
     };
     if let Some(album) = album_name {
-        app.actions.picker_artists = artists;
-        app.actions.picker_track = track;
-        ui.set_artist_picker_album(album.into());
-        ui.set_artist_picker_names(ModelRc::new(VecModel::from(
-            app.actions
-                .picker_artists
-                .iter()
-                .map(|a| slint::SharedString::from(a.name.as_str()))
-                .collect::<Vec<_>>(),
-        )));
-        ui.set_artist_picker_open(true);
+        open_artist_picker(ui, app, artists, Some(album), track);
         return;
     }
     app.actions.picker_track = None;
     ui.set_artist_picker_album("".into());
+    ui.set_artist_picker_album_cover(Image::default());
     if artists.is_empty() {
         return;
     }
     if artists.len() == 1 {
         navigate_to_artist(ui, app, &artists[0]);
     } else {
-        app.actions.picker_artists = artists;
-        ui.set_artist_picker_names(ModelRc::new(VecModel::from(
-            app.actions
-                .picker_artists
-                .iter()
-                .map(|a| slint::SharedString::from(a.name.as_str()))
-                .collect::<Vec<_>>(),
-        )));
-        ui.set_artist_picker_open(true);
+        open_artist_picker(ui, app, artists, None, None);
     }
 }
 fn open_picked_artist(ui: &MainWindow, app: &mut App, index: usize) {

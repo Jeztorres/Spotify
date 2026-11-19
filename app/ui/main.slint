@@ -11,6 +11,7 @@ export struct TrackEntry { index: int, uri: string, cover: image, title: string,
 export struct LyricEntry { text: string, translation: string }
 export struct GenreEntry { name: string, query: string, from: color, to: color }
 export struct ConnectDevice { id: string, name: string, kind: string, icon: string, active: bool, local: bool }
+export struct ArtistChoice { name: string, avatar: image }
 
 // Trazados SVG (viewbox 24x24) de los iconos — set tipo Material, más limpio y nítido.
 global Icons {
@@ -47,6 +48,7 @@ global Icons {
     out property <string> translate: "M3 5.5 H12 M7.5 3 V5.5 M5 5.5 C5.6 8.6 7.6 11.2 11 12.6 M10 5.5 C9.4 8.8 7.2 11.4 3.8 12.8 M12.5 21 L16.5 11 L20.5 21 M14 17.5 H19";
     out property <string> close-small: "M7 7 L17 17 M17 7 L7 17";
     out property <string> history: "M3.5 12 A8.5 8.5 0 1 0 6 6 M3 3 V7 H7 M12 7.5 V12 L15 14";
+    out property <string> artist: "M12 4 A4 4 0 1 0 12 12 A4 4 0 1 0 12 4 Z M4.5 20 C4.5 16.4 7.9 14.5 12 14.5 C16.1 14.5 19.5 16.4 19.5 20";
 }
 
 component LibraryRow inherits Rectangle {
@@ -114,6 +116,51 @@ component MenuChoice inherits Rectangle {
     background: menu-touch.has-hover && root.enabled ? #ffffff18 : transparent;
     Text { x: 12px; width: parent.width - 24px; height: parent.height; text: root.label; color: root.enabled ? white : Theme.sub; horizontal-alignment: left; vertical-alignment: center; font-size: 13px; overflow: elide; }
     menu-touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+component AvatarChoice inherits Rectangle {
+    in property <string> label;
+    in property <image> avatar;
+    in property <bool> square: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 40px; border-radius: 6px;
+    background: choice-touch.has-hover && root.enabled ? #ffffff18 : transparent;
+    HorizontalLayout {
+        padding-left: 8px; padding-right: 10px; spacing: 10px;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 28px; height: 28px;
+            border-radius: root.square ? 4px : 14px;
+            background: #ffffff18;
+            clip: true;
+            if root.avatar.width > 0: Image {
+                width: 100%; height: 100%;
+                source: root.avatar;
+                image-fit: cover;
+            }
+            if root.avatar.width == 0: IconPath {
+                x: 6px; y: 6px; width: 16px; height: 16px;
+                d: root.square ? Icons.note : Icons.artist;
+                tint: #ffffffaa;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            color: root.enabled ? white : Theme.sub;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            font-size: 13px;
+            font-weight: 500;
+            overflow: elide;
+        }
+    }
+    choice-touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
 }
 
 component MediaCard inherits Rectangle {
@@ -895,7 +942,7 @@ export component MainWindow inherits Window {
     in property <bool> menu-can-like;
     in property <bool> menu-can-album;
     in property <[string]> menu-destinations;
-    in property <[string]> menu-artists;
+    in property <[ArtistChoice]> menu-artists;
     in property <bool> menu-adding;
     in property <string> menu-error;
     in property <string> share-link;
@@ -905,8 +952,9 @@ export component MainWindow inherits Window {
     callback menu-add-playlist(int);
     callback menu-open-artist(int);
     in-out property <bool> artist-picker-open;
-    in property <[string]> artist-picker-names;
+    in property <[ArtistChoice]> artist-picker-items;
     in property <string> artist-picker-album;
+    in property <image> artist-picker-album-cover;
     callback open-track-artist(int, int);
     callback open-picked-artist(int);
     callback open-picked-album();
@@ -918,6 +966,7 @@ export component MainWindow inherits Window {
     in property <string> info-title;
     in property <string> info-text;
     in property <string> info-url;
+    in property <image> info-avatar;
     callback open-info-source();
     in-out property <bool> delete-open;
     in property <bool> playlist-deleting;
@@ -2936,7 +2985,8 @@ export component MainWindow inherits Window {
                             MenuChoice { height: 31px; label: "Crear nueva playlist…"; enabled: !root.menu-adding; clicked => { root.menu-action(3); } }
                         }
                         if root.menu-page == 2: VerticalLayout {
-                            for name[i] in root.menu-artists: MenuChoice { height: 31px; label: name; clicked => { root.menu-open-artist(i); } }
+                            spacing: 2px;
+                            for item[i] in root.menu-artists: AvatarChoice { label: item.name; avatar: item.avatar; clicked => { root.menu-open-artist(i); } }
                         }
                         if root.menu-page == 3: VerticalLayout {
                             spacing: 12px;
@@ -2980,9 +3030,9 @@ export component MainWindow inherits Window {
         Rectangle {
             x: clamp(root.menu-x, 8px, parent.width - self.width - 8px);
             y: clamp(root.menu-y, 8px, parent.height - self.height - 8px);
-            property <int> total-count: root.artist-picker-names.length + (root.artist-picker-album != "" ? 1 : 0);
-            width: root.artist-picker-album != "" ? 280px : 248px;
-            height: min(340px, 76px + self.total-count * 34px + (root.artist-picker-album != "" ? 8px : 0px));
+            property <int> total-count: root.artist-picker-items.length + (root.artist-picker-album != "" ? 1 : 0);
+            width: root.artist-picker-album != "" ? 300px : 268px;
+            height: min(380px, 76px + self.total-count * 42px + (root.artist-picker-album != "" ? 8px : 0px));
             border-radius: 10px; background: #262628;
             border-width: 1px; border-color: #ffffff24;
             drop-shadow-blur: 18px; drop-shadow-color: #00000088;
@@ -3002,16 +3052,18 @@ export component MainWindow inherits Window {
                     horizontal-scrollbar-policy: always-off;
                     VerticalLayout {
                         spacing: 2px;
-                        for name[i] in root.artist-picker-names: MenuChoice {
-                            height: 32px; label: name;
+                        for item[i] in root.artist-picker-items: AvatarChoice {
+                            label: item.name;
+                            avatar: item.avatar;
                             clicked => { root.artist-picker-open = false; root.open-picked-artist(i); }
                         }
                         if root.artist-picker-album != "": Rectangle { height: 4px; }
                         if root.artist-picker-album != "": Rectangle { height: 1px; background: #ffffff20; }
                         if root.artist-picker-album != "": Rectangle { height: 2px; }
-                        if root.artist-picker-album != "": MenuChoice {
-                            height: 32px;
+                        if root.artist-picker-album != "": AvatarChoice {
                             label: "Álbum: " + root.artist-picker-album;
+                            avatar: root.artist-picker-album-cover;
+                            square: true;
                             clicked => { root.artist-picker-open = false; root.open-picked-album(); }
                         }
                     }
@@ -3088,7 +3140,15 @@ export component MainWindow inherits Window {
             width: min(600px, parent.width - 64px); height: min(520px, parent.height - 64px); border-radius: 12px; background: Theme.card;
             VerticalLayout {
                 padding: 24px; spacing: 16px;
-                Text { text: root.info-title; font-size: 21px; font-weight: 700; color: white; overflow: elide; horizontal-alignment: left; }
+                HorizontalLayout {
+                    spacing: 12px;
+                    if root.info-avatar.width > 0: Image {
+                        width: 44px; height: 44px;
+                        source: root.info-avatar;
+                        image-fit: cover;
+                    }
+                    Text { text: root.info-title; font-size: 21px; font-weight: 700; color: white; overflow: elide; horizontal-alignment: left; vertical-alignment: center; horizontal-stretch: 1; }
+                }
                 ScrollView { VerticalLayout { Text { text: root.info-text; font-size: 14px; color: #eeeeee; wrap: word-wrap; horizontal-alignment: left; } } }
                 HorizontalLayout { alignment: end; spacing: 12px;
                     if root.info-url != "": Button { text: "Ver fuente"; clicked => { root.open-info-source(); } }
