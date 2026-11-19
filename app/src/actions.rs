@@ -1061,6 +1061,13 @@ pub fn wire(ui: &MainWindow) {
     ui.on_open_track_artist(|kind, index| {
         with_app(|ui, app| prompt_or_open_artist(ui, app, kind, index as usize));
     });
+    ui.on_open_track_album(|kind, index| {
+        with_app(|ui, app| {
+            if let Some(t) = track_at(app, kind, index as usize) {
+                open_album(ui, app, &t);
+            }
+        });
+    });
     ui.on_open_picked_artist(|index| {
         with_app(|ui, app| open_picked_artist(ui, app, index as usize));
     });

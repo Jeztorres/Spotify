@@ -231,13 +231,14 @@ component TrackRow inherits Rectangle {
     in property <bool> popular: false;
     callback clicked();
     callback open-artist(length, length);
+    callback open-album();
     callback add-playlist(length, length);
     callback context(length, length);
     callback like();
     // Filas normales: 2 = cuatro columnas, 1 = sin álbum, 0 = artista apilado bajo el título.
     property <int> mode: root.popular ? 2 : TrackColumns.mode(self.width);
     property <bool> stacked: !root.popular && root.mode == 0;
-    property <bool> hovering: ta.has-hover || artist-ta.has-hover;
+    property <bool> hovering: ta.has-hover || artist-ta.has-hover || album-ta.has-hover;
     height: 60px;
     border-radius: 4px;
     background: root.hovering ? #ffffff18 : transparent;
@@ -305,10 +306,23 @@ component TrackRow inherits Rectangle {
             pointer-event(e) => { if e.button == PointerEventButton.right && e.kind == PointerEventKind.up { root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); } }
         }
     }
-    if !root.popular && root.mode == 2: Text {
+    Rectangle {
+        visible: !root.popular && root.mode == 2;
         x: TrackColumns.album-x(root.width); width: TrackColumns.duration-x(root.width) - self.x - 16px;
-        height: parent.height; text: root.t.album; horizontal-alignment: left; vertical-alignment: center;
-        overflow: elide; font-size: 13px; color: #ffffffbb;
+        height: parent.height;
+        album-label := Text {
+            x: 0; y: 0; width: min(self.preferred-width, parent.width); height: parent.height;
+            text: root.t.album; horizontal-alignment: left; vertical-alignment: center;
+            overflow: elide; font-size: 13px;
+            color: album-ta.has-hover ? white : #ffffffbb;
+        }
+        album-ta := TouchArea {
+            x: 0; y: 0; width: album-label.width; height: parent.height;
+            enabled: !root.popular && root.mode == 2 && root.t.album != "";
+            mouse-cursor: !root.popular && root.mode == 2 && root.t.album != "" ? pointer : default;
+            clicked => { root.open-album(); }
+            pointer-event(e) => { if e.button == PointerEventButton.right && e.kind == PointerEventKind.up { root.context(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y); } }
+        }
     }
     if root.popular: Text {
         x: TrackColumns.pop-plays-x(root.width); width: TrackColumns.pop-plays-w(root.width);
@@ -400,25 +414,43 @@ component FilterChip inherits Rectangle {
 component SettingGroup inherits VerticalLayout {
     in property <string> title;
     spacing: 10px;
-    Text { text: root.title; color: white; font-size: 18px; font-weight: 700; horizontal-alignment: left; }
+    Text {
+        text: root.title;
+        color: #ffffffc8;
+        font-family: Theme.display-font;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        horizontal-alignment: left;
+    }
     Rectangle {
-        border-radius: 14px; background: #ffffff0d;
-        VerticalLayout { padding-top: 4px; padding-bottom: 4px; @children }
+        border-radius: 16px;
+        background: #ffffff0a;
+        border-width: 1px;
+        border-color: #ffffff14;
+        VerticalLayout { padding-top: 2px; padding-bottom: 2px; @children }
     }
 }
 
 component SettingRow inherits Rectangle {
     in property <string> title;
     in property <string> detail;
-    height: 66px;
-    HorizontalLayout {
-        padding-left: 18px; padding-right: 18px; spacing: 16px;
-        VerticalLayout {
-            alignment: center; spacing: 3px; horizontal-stretch: 1;
-            Text { text: root.title; color: white; font-size: 14px; font-weight: 600; horizontal-alignment: left; overflow: elide; }
-            if root.detail != "": Text { text: root.detail; color: Theme.sub; font-size: 12px; horizontal-alignment: left; wrap: word-wrap; }
+    in property <bool> last: false;
+    min-height: 64px;
+    VerticalLayout {
+        HorizontalLayout {
+            padding-left: 20px; padding-right: 20px; padding-top: 13px; padding-bottom: 13px; spacing: 16px;
+            VerticalLayout {
+                alignment: center; spacing: 3px; horizontal-stretch: 1;
+                Text { text: root.title; color: white; font-size: 14px; font-weight: 600; horizontal-alignment: left; overflow: elide; }
+                if root.detail != "": Text { text: root.detail; color: #ffffff96; font-size: 12px; horizontal-alignment: left; wrap: word-wrap; }
+            }
+            VerticalLayout { alignment: center; @children }
         }
-        VerticalLayout { alignment: center; @children }
+        if !root.last: HorizontalLayout {
+            padding-left: 20px; padding-right: 20px;
+            Rectangle { height: 1px; background: #ffffff10; }
+        }
     }
 }
 
@@ -956,6 +988,7 @@ export component MainWindow inherits Window {
     in property <string> artist-picker-album;
     in property <image> artist-picker-album-cover;
     callback open-track-artist(int, int);
+    callback open-track-album(int, int);
     callback open-picked-artist(int);
     callback open-picked-album();
     callback toggle-saved(int, int);
@@ -1382,7 +1415,7 @@ export component MainWindow inherits Window {
                                 SectionTitle { text: "Canciones"; }
                                 for t[i] in root.search-tracks: TrackRow {
                                     visible: i < 4; height: i < 4 ? 60px : 0px;
-                                    t: t; clicked => { root.play-search-track(i); } open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(1, i); } add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(1, i); } context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(1, i); } like => { root.toggle-saved(1, i); }
+                                    t: t; clicked => { root.play-search-track(i); } open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(1, i); } open-album => { root.open-track-album(1, i); } add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(1, i); } context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(1, i); } like => { root.toggle-saved(1, i); }
                                 }
                             }
                         }
@@ -1396,7 +1429,7 @@ export component MainWindow inherits Window {
                         // Canciones: lista completa con «Cargar más».
                         if root.searching && root.search-filter == 1 && root.search-tracks.length > 0: TrackTableHeader { }
                         if root.searching && root.search-filter == 1: VerticalLayout {
-                            for t[i] in root.search-tracks: TrackRow { t: t; clicked => { root.play-search-track(i); } open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(1, i); } add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(1, i); } context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(1, i); } like => { root.toggle-saved(1, i); } }
+                            for t[i] in root.search-tracks: TrackRow { t: t; clicked => { root.play-search-track(i); } open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(1, i); } open-album => { root.open-track-album(1, i); } add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(1, i); } context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(1, i); } like => { root.toggle-saved(1, i); } }
                         }
                         if root.searching && root.search-filter == 1 && root.search-more-tracks: HorizontalLayout {
                             alignment: center;
@@ -1624,6 +1657,7 @@ export component MainWindow inherits Window {
                             width: parent.width; t: t;
                             clicked => { root.play-track(i); }
                             open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(0, i); }
+                            open-album => { root.open-track-album(0, i); }
                             add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(0, i); }
                             context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(0, i); }
                             like => { root.toggle-saved(0, i); }
@@ -1661,6 +1695,7 @@ export component MainWindow inherits Window {
                         spacing: 8px;
                         TrackRow { t: t; clicked => { root.play-suggestion(i); }
                             open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(3, i); }
+                            open-album => { root.open-track-album(3, i); }
                             add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(3, i); }
                             context(x,y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(3, i); }
                             like => { root.toggle-saved(3, i); }
@@ -1810,6 +1845,7 @@ export component MainWindow inherits Window {
                                             visible: root.artist-show-all || i < 5; height: root.artist-show-all || i < 5 ? 60px : 0px;
                                             t: t; clicked => { root.play-track(i); }
                                             open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(0, i); }
+                            open-album => { root.open-track-album(0, i); }
                                             add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(0, i); }
                                             context(x,y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(0, i); }
                                             like => { root.toggle-saved(0, i); }
@@ -1990,100 +2026,27 @@ export component MainWindow inherits Window {
             if root.page == 4: ScrollView {
                 x: 0; y: 0; width: parent.width; height: parent.height;
                 HorizontalLayout {
-                    padding: 24px; padding-top: 70px; padding-bottom: 20px; alignment: start;
+                    padding: 28px; padding-top: 72px; padding-bottom: 24px; alignment: start;
                     VerticalLayout {
-                        horizontal-stretch: 1; max-width: 760px; spacing: 24px; alignment: start;
-                        Text { text: "Configuración"; color: white; font-family: Theme.display-font; font-size: 34px; font-weight: 800; letter-spacing: -1px; horizontal-alignment: left; }
-                        SettingGroup {
-                            title: "Apariencia";
-                            SettingRow {
-                                title: "Portadas animadas"; detail: "Muestra álbumes y artistas en movimiento cuando Apple Music los tiene.";
-                                SwitchBox { on <=> root.pref-motion; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: "Mostrar barra lateral"; detail: "Tu biblioteca y la navegación a la izquierda.";
-                                SwitchBox { on <=> root.sidebar-visible; toggled => { root.pref-changed(); } }
-                            }
+                        horizontal-stretch: 1; max-width: 820px; spacing: 26px; alignment: start;
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Configuración"; color: white; font-family: Theme.display-font; font-size: 34px; font-weight: 900; letter-spacing: -1px; horizontal-alignment: left; }
+                            Text { text: "Audio, apariencia, rendimiento y cuenta"; color: Theme.sub; font-size: 13px; horizontal-alignment: left; }
                         }
                         SettingGroup {
-                            title: "Batería y rendimiento";
-                            SettingRow {
-                                title: "Modo ahorro de batería";
-                                detail: "Reduce la calidad de videos de fondo (540p / 15 FPS), pausa el dibujo al minimizar y espacia el reloj de letras.";
-                                SwitchBox { on <=> root.pref-battery-saver; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: "Ahorro máximo (apagar animaciones)";
-                                detail: "Desactiva portadas y videos animados de Apple Music y activa el modo ahorro de batería.";
-                                Button {
-                                    text: root.pref-battery-saver && !root.pref-motion ? "Restaurar fluidez" : "Activar ahorro";
-                                    clicked => {
-                                        if root.pref-battery-saver && !root.pref-motion {
-                                            root.pref-battery-saver = false;
-                                            root.pref-motion = true;
-                                        } else {
-                                            root.pref-battery-saver = true;
-                                            root.pref-motion = false;
-                                        }
-                                        root.pref-changed();
-                                    }
-                                }
-                            }
-                        }
-                        SettingGroup {
-                            title: "Reproductor";
-                            SettingRow {
-                                title: "Abrir con letras"; detail: "La pantalla de reproducción muestra la letra al abrirse.";
-                                SwitchBox { on <=> root.pref-lyrics; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: "Minimizar a la bandeja al cerrar"; detail: "Al pulsar cerrar (×), la música sigue sonando en segundo plano junto al reloj.";
-                                SwitchBox { on <=> root.pref-tray; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: "Normalización de audio"; detail: "Mantiene un volumen uniforme entre canciones (se aplica al reconectar).";
-                                SwitchBox { on <=> root.pref-normalise; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: "Crossfade entre canciones";
-                                detail: root.pref-crossfade < 0.5 ? "Desactivado (transición directa)." : "Fundido suave de " + round(root.pref-crossfade) + " s al cambiar de canción (marcado en la barra).";
-                                HorizontalLayout {
-                                    spacing: 10px; alignment: center;
-                                    FilterChip {
-                                        label: "Off";
-                                        selected: root.pref-crossfade < 0.5;
-                                        clicked => { root.pref-crossfade = 0; root.pref-changed(); }
-                                    }
-                                    Scrubber {
-                                        width: 150px;
-                                        value: clamp(root.pref-crossfade / 12.0, 0, 1);
-                                        bar-color: Theme.green-bright;
-                                        accent: Theme.green-bright;
-                                        changed(v) => {
-                                            root.pref-crossfade = round(v * 12.0);
-                                            root.pref-changed();
-                                        }
-                                    }
-                                    Text {
-                                        width: 34px;
-                                        text: root.pref-crossfade < 0.5 ? "0 s" : round(root.pref-crossfade) + " s";
-                                        font-size: 12px; font-weight: 600; color: white;
-                                        vertical-alignment: center; horizontal-alignment: right;
-                                    }
-                                }
-                            }
+                            title: "AUDIO Y REPRODUCCIÓN";
                             SettingRow {
                                 title: "Ecualizador de audio";
-                                detail: root.pref-eq-enabled ? "Elige un perfil o ajusta las barras verticales (-12 dB a +12 dB)." : "Desactivado (sonido directo sin filtros).";
+                                detail: root.pref-eq-enabled ? "Elige un perfil o ajusta las bandas (-12 dB a +12 dB)." : "Desactivado (sonido directo sin filtros).";
                                 SwitchBox { on <=> root.pref-eq-enabled; toggled => { root.pref-changed(); } }
                             }
                             Rectangle {
                                 height: 196px;
-                                border-radius: 10px;
-                                background: #ffffff08;
+                                background: #ffffff05;
                                 opacity: root.pref-eq-enabled ? 1.0 : 0.45;
                                 VerticalLayout {
-                                    padding: 12px; spacing: 10px;
+                                    padding-left: 20px; padding-right: 20px; padding-top: 12px; padding-bottom: 14px; spacing: 10px;
                                     HorizontalLayout {
                                         spacing: 6px;
                                         for name[idx] in ["Plano", "Graves", "Pop", "Rock", "Vocal", "Electro", "Custom"]: FilterChip {
@@ -2127,33 +2090,85 @@ export component MainWindow inherits Window {
                                     }
                                 }
                             }
+                            HorizontalLayout {
+                                padding-left: 20px; padding-right: 20px;
+                                Rectangle { height: 1px; background: #ffffff10; }
+                            }
                             SettingRow {
-                                title: "Reproductor integrado (Soloist)"; detail: "Reproductor oficial de Spotify: clave personal y emparejamiento con el móvil.";
+                                title: "Crossfade entre canciones";
+                                detail: root.pref-crossfade < 0.5 ? "Desactivado (transición directa)." : "Fundido suave de " + round(root.pref-crossfade) + " s al cambiar de canción.";
+                                HorizontalLayout {
+                                    spacing: 10px; alignment: center;
+                                    FilterChip {
+                                        label: "Off";
+                                        selected: root.pref-crossfade < 0.5;
+                                        clicked => { root.pref-crossfade = 0; root.pref-changed(); }
+                                    }
+                                    Scrubber {
+                                        width: 150px;
+                                        value: clamp(root.pref-crossfade / 12.0, 0, 1);
+                                        bar-color: Theme.green-bright;
+                                        accent: Theme.green-bright;
+                                        changed(v) => {
+                                            root.pref-crossfade = round(v * 12.0);
+                                            root.pref-changed();
+                                        }
+                                    }
+                                    Text {
+                                        width: 34px;
+                                        text: root.pref-crossfade < 0.5 ? "0 s" : round(root.pref-crossfade) + " s";
+                                        font-size: 12px; font-weight: 600; color: white;
+                                        vertical-alignment: center; horizontal-alignment: right;
+                                    }
+                                }
+                            }
+                            SettingRow {
+                                title: "Normalización de audio"; detail: "Mantiene un volumen uniforme entre canciones (se aplica al reconectar).";
+                                SwitchBox { on <=> root.pref-normalise; toggled => { root.pref-changed(); } }
+                            }
+                            SettingRow {
+                                title: "Abrir con letras"; detail: "La pantalla de reproducción muestra la letra automáticamente al abrirse.";
+                                SwitchBox { on <=> root.pref-lyrics; toggled => { root.pref-changed(); } }
+                            }
+                            SettingRow {
+                                title: "Reproductor integrado"; detail: "Configuración de clave personal y emparejamiento con el teléfono.";
+                                last: true;
                                 Button { text: "Configurar"; clicked => { root.soloist-open-panel(); } }
                             }
                         }
                         SettingGroup {
-                            title: "Privacidad y datos";
+                            title: "APARIENCIA Y RENDIMIENTO";
                             SettingRow {
-                                title: "Caché de imágenes"; detail: root.cache-message == "" ? "Portadas y fotos guardadas en disco." : root.cache-message;
-                                Button { text: "Vaciar"; clicked => { root.clear-cache(); } }
+                                title: "Portadas animadas"; detail: "Muestra portadas y fondos en movimiento cuando están disponibles.";
+                                SwitchBox { on <=> root.pref-motion; toggled => { root.pref-changed(); } }
+                            }
+                            SettingRow {
+                                title: "Modo ahorro de recursos";
+                                detail: "Reduce la resolución de video en segundo plano, pausa animaciones al minimizar y espacia el reloj de letras.";
+                                SwitchBox { on <=> root.pref-battery-saver; toggled => { root.pref-changed(); } }
+                            }
+                            SettingRow {
+                                title: "Mostrar barra lateral"; detail: "Muestra tu biblioteca y navegación a la izquierda.";
+                                SwitchBox { on <=> root.sidebar-visible; toggled => { root.pref-changed(); } }
+                            }
+                            SettingRow {
+                                title: "Minimizar a la bandeja al cerrar"; detail: "Al cerrar la ventana, la música sigue sonando en segundo plano.";
+                                last: true;
+                                SwitchBox { on <=> root.pref-tray; toggled => { root.pref-changed(); } }
                             }
                         }
                         SettingGroup {
-                            title: "Cuenta";
+                            title: "CUENTA Y ALMACENAMIENTO";
                             SettingRow {
-                                title: root.user-name == "" ? "Tu cuenta" : root.user-name; detail: "Tu perfil, seguidores y lo que escuchas.";
+                                title: root.user-name == "" ? "Tu cuenta" : root.user-name; detail: "Tu perfil, seguidores y actividad reciente.";
                                 Button { text: "Ver perfil"; clicked => { root.open-profile(); } }
                             }
                             SettingRow {
-                                title: "Cerrar sesión"; detail: "Se borra la sesión guardada de esta cuenta en este equipo.";
-                                Button { text: "Cerrar sesión"; clicked => { root.sign-out(); } }
+                                title: "Caché de imágenes"; detail: root.cache-message == "" ? "Portadas y fotos de artistas guardadas en disco." : root.cache-message;
+                                Button { text: "Vaciar"; clicked => { root.clear-cache(); } }
                             }
-                        }
-                        SettingGroup {
-                            title: "Acerca de";
                             SettingRow {
-                                title: "Versión instalada";
+                                title: "Actualizaciones";
                                 detail: root.update-status != "" ? (root.app-version + " · " + root.update-status) : (root.app-version == "" ? "v0.1.0" : root.app-version);
                                 Button {
                                     text: root.update-busy ? "Actualizando…" : (root.update-available ? "Actualizar ahora" : "Buscar actualización");
@@ -2161,8 +2176,13 @@ export component MainWindow inherits Window {
                                     clicked => { root.check-update(); }
                                 }
                             }
+                            SettingRow {
+                                title: "Cerrar sesión"; detail: "Borra la sesión guardada de esta cuenta en este equipo.";
+                                last: true;
+                                Button { text: "Cerrar sesión"; clicked => { root.sign-out(); } }
+                            }
                         }
-                        Text { text: "SpotifyMac " + root.app-version + " · Requiere Spotify Premium."; color: Theme.sub; font-size: 11px; horizontal-alignment: left; }
+                        Text { text: "Versión " + (root.app-version == "" ? "0.1.0" : root.app-version) + " · Requiere Spotify Premium."; color: Theme.sub; font-size: 11px; horizontal-alignment: left; }
                         Rectangle { height: 112px; background: transparent; }
                     }
                 }
@@ -2172,56 +2192,99 @@ export component MainWindow inherits Window {
                 x: 0; y: 0; width: parent.width; height: parent.height;
                 content-y <=> root.profile-scroll;
                 VerticalLayout {
-                    padding: 24px; padding-top: 70px; padding-bottom: 20px; spacing: 26px; alignment: start;
-                    HorizontalLayout {
-                        spacing: 28px; alignment: start;
-                        Rectangle {
-                            width: root.width < 1100px ? 140px : 190px; height: self.width; border-radius: self.width / 2; clip: true; background: Theme.hover;
-                            drop-shadow-blur: 24px; drop-shadow-color: #00000088;
-                            Text { text: "♪"; color: Theme.sub; font-size: 48px; horizontal-alignment: center; vertical-alignment: center; }
-                            Image { width: 100%; height: 100%; source: root.profile-image; image-fit: cover; }
-                        }
-                        VerticalLayout {
-                            alignment: end; spacing: 8px; horizontal-stretch: 1;
-                            Text { text: root.profile-is-me ? "Tu perfil" : "Perfil"; color: white; font-size: 13px; font-weight: 600; horizontal-alignment: left; }
-                            Text { text: root.profile-name == "" ? " " : root.profile-name; color: white; font-family: Theme.display-font; font-size: root.width < 1100px ? 44px : 64px; font-weight: 900; letter-spacing: -2px; horizontal-alignment: left; overflow: elide; }
-                            HorizontalLayout {
-                                spacing: 8px; alignment: start;
-                                if root.profile-playlists-count != "": Text { text: root.profile-playlists-count; color: #ffffffd9; font-size: 14px; font-weight: 500; vertical-alignment: center; }
-                                if root.profile-playlists-count != "" && root.profile-followers-count != "": Text { text: "·"; color: #ffffff99; font-size: 14px; vertical-alignment: center; }
-                                if root.profile-followers-count != "": LinkText {
-                                    text: root.profile-followers-count;
-                                    clicked => { root.open-profile-people(1); }
+                    spacing: 24px; alignment: start;
+                    Rectangle {
+                        background: @linear-gradient(180deg, #1db9542b 0%, #1db9540d 62%, transparent 100%);
+                        HorizontalLayout {
+                            padding-left: 32px; padding-right: 32px; padding-top: 76px; padding-bottom: 24px;
+                            spacing: 28px; alignment: start;
+                            Rectangle {
+                                width: root.width < 1100px ? 140px : 188px; height: self.width;
+                                border-radius: self.width / 2; clip: true; background: Theme.hover;
+                                border-width: 2px; border-color: #ffffff28;
+                                drop-shadow-blur: 28px; drop-shadow-color: #00000099;
+                                Text { text: "♪"; color: Theme.sub; font-size: 48px; horizontal-alignment: center; vertical-alignment: center; }
+                                Image { width: 100%; height: 100%; source: root.profile-image; image-fit: cover; }
+                            }
+                            VerticalLayout {
+                                alignment: end; spacing: 10px; horizontal-stretch: 1;
+                                Rectangle {
+                                    height: 22px; width: prof-badge.preferred-width + 20px; border-radius: 11px;
+                                    background: #ffffff18; border-width: 1px; border-color: #ffffff24;
+                                    prof-badge := Text {
+                                        text: root.profile-is-me ? "TU PERFIL" : "PERFIL";
+                                        color: #ffffffe0; font-size: 10px; font-weight: 800; letter-spacing: 0.8px;
+                                        horizontal-alignment: center; vertical-alignment: center;
+                                    }
                                 }
-                                if (root.profile-playlists-count != "" || root.profile-followers-count != "") && root.profile-following-count != "": Text { text: "·"; color: #ffffff99; font-size: 14px; vertical-alignment: center; }
-                                if root.profile-following-count != "": LinkText {
-                                    text: root.profile-following-count;
-                                    clicked => { root.open-profile-people(0); }
+                                Text {
+                                    text: root.profile-name == "" ? " " : root.profile-name;
+                                    color: white; font-family: Theme.display-font;
+                                    font-size: root.width < 1100px ? 42px : 60px; font-weight: 900; letter-spacing: -2px;
+                                    horizontal-alignment: left; overflow: elide;
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    if root.profile-playlists-count != "": Rectangle {
+                                        height: 30px; width: pl-stat.preferred-width + 24px; border-radius: 15px;
+                                        background: #ffffff12; border-width: 1px; border-color: #ffffff1f;
+                                        pl-stat := Text { text: root.profile-playlists-count; color: #ffffffe8; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                                    }
+                                    if root.profile-followers-count != "": Rectangle {
+                                        height: 30px; width: flw-stat.preferred-width + 24px; border-radius: 15px;
+                                        background: flw-ta.has-hover ? #ffffff24 : #ffffff12; border-width: 1px; border-color: #ffffff1f;
+                                        flw-stat := Text { text: root.profile-followers-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                                        flw-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-profile-people(1); } }
+                                    }
+                                    if root.profile-following-count != "": Rectangle {
+                                        height: 30px; width: fng-stat.preferred-width + 24px; border-radius: 15px;
+                                        background: fng-ta.has-hover ? #ffffff24 : #ffffff12; border-width: 1px; border-color: #ffffff1f;
+                                        fng-stat := Text { text: root.profile-following-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                                        fng-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-profile-people(0); } }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    alignment: start; spacing: 10px; padding-top: 2px;
+                                    if root.profile-is-me: Rectangle {
+                                        width: cfg-txt.preferred-width + 28px; height: 34px; border-radius: 17px;
+                                        background: cfg-ta.has-hover ? #ffffff24 : #ffffff12;
+                                        border-width: 1px; border-color: #ffffff38;
+                                        cfg-txt := Text { text: "Configuración"; color: white; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                                        cfg-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-settings(); } }
+                                    }
+                                    if !root.profile-is-me: Rectangle {
+                                        width: follow-prof-txt.preferred-width + 28px; height: 34px; border-radius: 17px;
+                                        background: root.target-following ? Theme.green.with-alpha(0.26) : (follow-prof-ta.has-hover ? #ffffff22 : transparent);
+                                        border-width: 1px; border-color: root.target-following ? Theme.green-bright : #ffffff55;
+                                        opacity: root.target-follow-busy ? 0.55 : 1;
+                                        follow-prof-txt := Text {
+                                            text: root.target-following ? "Siguiendo" : "Seguir";
+                                            color: white; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center;
+                                        }
+                                        follow-prof-ta := TouchArea { enabled: !root.target-follow-busy; mouse-cursor: pointer; clicked => { root.toggle-follow(); } }
+                                    }
                                 }
                             }
-                            HorizontalLayout {
-                                alignment: start; spacing: 10px; padding-top: 4px;
-                                if root.profile-is-me: Button { text: "Configuración"; clicked => { root.open-settings(); } }
-                                if !root.profile-is-me: Button {
-                                    text: root.target-following ? "Siguiendo" : "Seguir";
-                                    enabled: !root.target-follow-busy;
-                                    clicked => { root.toggle-follow(); }
-                                }
-                            }
                         }
                     }
-                    if root.profile-message != "": Text { text: root.profile-message; color: Theme.sub; font-size: 13px; horizontal-alignment: left; }
-                    if root.profile-artists.length > 0: VerticalLayout {
-                        spacing: 12px;
-                        SectionTitle { text: "Artistas escuchados recientemente"; }
-                        CardShelf { round: true; cards: root.profile-artists; clicked(i) => { root.open-profile-item(0, i); } }
+                    VerticalLayout {
+                        padding-left: 32px; padding-right: 32px; spacing: 26px;
+                        if root.profile-message != "": Rectangle {
+                            height: 52px; border-radius: 12px; background: #ffffff0a; border-width: 1px; border-color: #ffffff14;
+                            Text { x: 16px; width: parent.width - 32px; height: parent.height; text: root.profile-message; color: Theme.sub; font-size: 13px; horizontal-alignment: left; vertical-alignment: center; }
+                        }
+                        if root.profile-artists.length > 0: VerticalLayout {
+                            spacing: 12px;
+                            SectionTitle { text: "Artistas escuchados recientemente"; }
+                            CardShelf { round: true; cards: root.profile-artists; clicked(i) => { root.open-profile-item(0, i); } }
+                        }
+                        if root.profile-playlists.length > 0: VerticalLayout {
+                            spacing: 12px;
+                            SectionTitle { text: "Playlists públicas"; }
+                            CardShelf { cards: root.profile-playlists; clicked(i) => { root.open-profile-item(1, i); } }
+                        }
+                        Rectangle { height: 112px; background: transparent; }
                     }
-                    if root.profile-playlists.length > 0: VerticalLayout {
-                        spacing: 12px;
-                        SectionTitle { text: "Playlists públicas"; }
-                        CardShelf { cards: root.profile-playlists; clicked(i) => { root.open-profile-item(1, i); } }
-                    }
-                    Rectangle { height: 112px; background: transparent; }
                 }
             }
 
