@@ -109,6 +109,7 @@ global Icons {
     // Versiones rellenas (Material 3) para el reproductor grande.
     out property <string> prev-solid: "M6 5 C6.8 5 7.5 5.7 7.5 6.5 V17.5 C7.5 18.3 6.8 19 6 19 C5.2 19 4.5 18.3 4.5 17.5 V6.5 C4.5 5.7 5.2 5 6 5 Z M19.5 6.3 V17.7 C19.5 18.5 18.6 19 17.9 18.6 L9.6 13.2 C9 12.8 9 11.2 9.6 10.8 L17.9 5.4 C18.6 5 19.5 5.5 19.5 6.3 Z";
     out property <string> next-solid: "M18 5 C18.8 5 19.5 5.7 19.5 6.5 V17.5 C19.5 18.3 18.8 19 18 19 C17.2 19 16.5 18.3 16.5 17.5 V6.5 C16.5 5.7 17.2 5 18 5 Z M4.5 6.3 V17.7 C4.5 18.5 5.4 19 6.1 18.6 L14.4 13.2 C15 12.8 15 11.2 14.4 10.8 L6.1 5.4 C5.4 5 4.5 5.5 4.5 6.3 Z";
+    out property <string> palette: "M12 3 C7 3 3 7 3 12 C3 17 7 21 12 21 C13 21 13.6 20.3 13.6 19.5 C13.6 18.5 12.9 18.1 12.9 17.2 C12.9 16.3 13.6 15.7 14.5 15.7 H16.5 C19 15.7 21 13.7 21 11.2 C21 6.7 17 3 12 3 Z M7.5 11 A1.2 1.2 0 1 0 7.5 13.4 A1.2 1.2 0 1 0 7.5 11 Z M10 6.8 A1.2 1.2 0 1 0 10 9.2 A1.2 1.2 0 1 0 10 6.8 Z M14.6 6.8 A1.2 1.2 0 1 0 14.6 9.2 A1.2 1.2 0 1 0 14.6 6.8 Z";
     out property <string> volume-low: "M11 5 L6 9 H2 V15 H6 L11 19 Z M15.5 8.5 C16.5 9.5 17 10.7 17 12 C17 13.3 16.5 14.5 15.5 15.5";
     out property <string> shuffle: "M2 18 H4.5 C8 18 9.5 15.5 11 12.5 C12.5 9.5 14 7 17.5 7 H22 M18 3 L22 7 L18 11 M2 6 H4.5 C6 6 7.2 6.6 8.2 7.6 M13.8 16.4 C14.8 17.4 16 18 17.5 18 H22 M18 14 L22 18 L18 22";
     out property <string> repeat: "M17 2 L21 6 L17 10 M3 11 V10 C3 7.8 4.8 6 7 6 H21 M7 22 L3 18 L7 14 M21 13 V14 C21 16.2 19.2 18 17 18 H3";
@@ -576,45 +577,95 @@ component ColorSwatches inherits HorizontalLayout {
 
 component SettingGroup inherits VerticalLayout {
     in property <string> title;
+    in property <string> subtitle;
     spacing: 10px;
-    Text {
-        text: root.title;
-        color: #ffffffc8;
-        font-family: Theme.display-font;
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        horizontal-alignment: left;
+    VerticalLayout {
+        spacing: 2px; padding-left: 6px;
+        Text {
+            text: root.title;
+            color: white;
+            font-family: Theme.display-font;
+            font-size: 17px;
+            font-weight: 800;
+            horizontal-alignment: left;
+        }
+        if root.subtitle != "": Text { text: root.subtitle; color: #ffffff8c; font-size: 12px; horizontal-alignment: left; wrap: word-wrap; }
     }
     Rectangle {
-        border-radius: 16px;
-        background: #ffffff0a;
+        border-radius: 24px;
+        background: Theme.green.mix(#ffffff, 0.04).with-alpha(0.09);
         border-width: 1px;
-        border-color: #ffffff14;
-        VerticalLayout { padding-top: 2px; padding-bottom: 2px; @children }
+        border-color: #ffffff12;
+        VerticalLayout { padding-top: 4px; padding-bottom: 4px; @children }
     }
 }
 
+// Fila de ajuste adaptable: el control va a la derecha si cabe y debajo del texto si no,
+// para que nada se apriete en ventanas pequeñas.
 component SettingRow inherits Rectangle {
     in property <string> title;
     in property <string> detail;
     in property <bool> last: false;
-    min-height: 64px;
-    VerticalLayout {
-        HorizontalLayout {
-            padding-left: 20px; padding-right: 20px; padding-top: 13px; padding-bottom: 13px; spacing: 16px;
-            VerticalLayout {
-                alignment: center; spacing: 3px; horizontal-stretch: 1;
-                Text { text: root.title; color: white; font-size: 14px; font-weight: 600; horizontal-alignment: left; overflow: elide; }
-                if root.detail != "": Text { text: root.detail; color: #ffffff96; font-size: 12px; horizontal-alignment: left; wrap: word-wrap; }
-            }
-            VerticalLayout { alignment: center; @children }
-        }
-        if !root.last: HorizontalLayout {
-            padding-left: 20px; padding-right: 20px;
-            Rectangle { height: 1px; background: #ffffff10; }
-        }
+    property <length> pad: 20px;
+    property <length> ctrl-w: ctrl.preferred-width;
+    property <length> ctrl-h: ctrl.preferred-height;
+    property <bool> stack: self.width - 2 * self.pad - self.ctrl-w - 18px < 230px;
+    property <length> text-w: self.stack ? self.width - 2 * self.pad : self.width - 2 * self.pad - self.ctrl-w - 18px;
+    height: self.stack
+        ? 14px + txt.preferred-height + 12px + self.ctrl-h + 16px
+        : max(66px, max(txt.preferred-height, self.ctrl-h) + 30px);
+    txt := VerticalLayout {
+        x: root.pad; width: root.text-w; height: self.preferred-height;
+        y: root.stack ? 14px : (root.height - self.preferred-height) / 2;
+        spacing: 3px;
+        Text { text: root.title; color: white; font-size: 14px; font-weight: 600; horizontal-alignment: left; wrap: word-wrap; }
+        if root.detail != "": Text { text: root.detail; color: #ffffff96; font-size: 12px; horizontal-alignment: left; wrap: word-wrap; }
     }
+    ctrl := HorizontalLayout {
+        x: root.stack ? root.pad : root.width - root.pad - root.ctrl-w;
+        y: root.stack ? txt.y + txt.preferred-height + 12px : (root.height - root.ctrl-h) / 2;
+        width: root.ctrl-w; height: root.ctrl-h;
+        @children
+    }
+    if !root.last: Rectangle { x: root.pad; y: root.height - 1px; width: root.width - 2 * root.pad; height: 1px; background: #ffffff10; }
+}
+
+// Botón tonal Material 3 (Configuración).
+component TonalButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+    width: tb-text.preferred-width + 36px; height: 38px; border-radius: tb-ta.pressed ? 12px : 19px;
+    property <color> base: root.danger ? #f2b8b5 : Theme.green-bright;
+    background: tb-ta.pressed ? root.base.with-alpha(0.32) : (tb-ta.has-hover ? root.base.with-alpha(0.24) : root.base.with-alpha(0.16));
+    opacity: root.enabled ? 1 : 0.45;
+    animate background, border-radius { duration: 150ms; }
+    tb-text := Text { text: root.text; color: root.base; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    accessible-role: button; accessible-label: root.text;
+    tb-ta := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Pestaña de Configuración (riel lateral o chips arriba).
+component SettingsTab inherits Rectangle {
+    in property <string> icon-d;
+    in property <string> label;
+    in property <bool> selected;
+    in property <bool> compact;
+    callback clicked();
+    height: root.compact ? 40px : 48px;
+    width: root.compact ? st-row.preferred-width + 28px : 220px;
+    border-radius: root.selected ? (root.compact ? 14px : 16px) : self.height / 2;
+    background: root.selected ? Theme.green.with-alpha(0.26) : (st-ta.has-hover ? #ffffff10 : transparent);
+    animate background, border-radius { duration: 180ms; easing: ease-out; }
+    st-row := HorizontalLayout {
+        padding-left: root.compact ? 14px : 18px; padding-right: 14px; spacing: 12px;
+        alignment: start;
+        IconPath { y: (parent.height - self.height) / 2; d: root.icon-d; width: 19px; height: 19px; tint: root.selected ? Theme.green-bright : #ffffffb0; }
+        Text { text: root.label; color: root.selected ? Theme.green-bright : #ffffffd0; font-size: 14px; font-weight: root.selected ? 700 : 600; vertical-alignment: center; }
+    }
+    accessible-role: tab; accessible-label: root.label;
+    st-ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
 component SwitchBox inherits Rectangle {
@@ -809,14 +860,23 @@ component QueueList inherits VerticalLayout {
         vertical-stretch: 1;
         for r[i] in root.rows: Rectangle {
             property <bool> dragging: root.drag-from == i;
-            height: root.row-h;
+            // Secciones como en Spotify: lo añadido a mano, lo que sigue del contexto y el autoplay.
+            property <bool> header: i == 0 || root.rows[i - 1].tag != r.tag;
+            property <length> header-h: self.header && !(i == 0 && r.tag == "") ? 34px : 0px;
+            height: root.row-h + self.header-h;
+            if (i == 0 || root.rows[i - 1].tag != r.tag) && !(i == 0 && r.tag == ""): Text {
+                x: 4px; y: 6px; height: 24px;
+                text: r.tag == "EN COLA" ? "Siguiente en la cola" : (r.tag == "AUTOPLAY" ? "Recomendado por Spotify" : "Siguiente de la lista");
+                font-size: 13px; font-weight: 700; color: r.tag == "AUTOPLAY" ? root.accent.mix(white, 0.6) : #ffffffcc;
+                vertical-alignment: center;
+            }
             // Línea verde donde caerá la canción arrastrada.
             if root.drag-to == i && root.drag-from >= 0 && root.drag-from != i: Rectangle {
                 x: 6px; width: parent.width - 12px; height: 2px; border-radius: 1px; background: Theme.green-bright;
-                y: root.drag-to > root.drag-from ? parent.height - 2px : 0px;
+                y: root.drag-to > root.drag-from ? parent.height - 2px : parent.header-h;
             }
             q-row := TouchArea {
-                width: 100%; height: 100%;
+                y: parent.header-h; width: 100%; height: root.row-h;
                 mouse-cursor: pointer;
                 clicked => { root.play(i); }
                 Rectangle {
@@ -858,7 +918,7 @@ component QueueList inherits VerticalLayout {
                         VerticalLayout {
                             horizontal-stretch: 1; alignment: center;
                             Text { text: r.title; font-size: root.compact ? 13px : 15px; font-weight: 600; color: white; overflow: elide; }
-                            Text { text: (r.tag != "" ? r.tag + "  " : "") + r.artist; font-size: 12px; color: #ffffffaa; overflow: elide; }
+                            Text { text: r.artist; font-size: 12px; color: #ffffffaa; overflow: elide; }
                         }
                         if !(q-row.has-hover && root.editable): Text { text: r.duration; font-size: 12px; color: #ffffff99; vertical-alignment: center; }
                         if q-row.has-hover && root.editable && root.drag-from < 0: HorizontalLayout {
@@ -966,7 +1026,9 @@ component GenreGrid inherits Rectangle {
 
 export component MainWindow inherits Window {
     title: "SpotifyMac";
-    no-frame: true;
+    // En macOS se conserva el marco nativo: con `no-frame` Slint quitaba la decoración en cada
+    // actualización de la ventana y los botones de cerrar/minimizar/ampliar desaparecían.
+    no-frame: !root.is-macos;
     min-width: 960px;
     min-height: 620px;
     preferred-width: 1280px;
@@ -1322,6 +1384,9 @@ export component MainWindow inherits Window {
     // Color de fondo de la página abierta (perfil de artista, playlist, Inicio…): el panel derecho lo comparte.
     property <color> page-bg: root.page == 3 ? root.artist-base : root.surface-tint;
     in property <bool> is-macos: false;
+    // macOS: el contenido ocupa también la barra de título (como apps nativas) y los botones de
+    // semáforo quedan fijos encima; este margen deja libre su zona.
+    property <length> mac-top: root.is-macos && !root.mini-player-open ? 30px : 0px;
     in-out property <bool> window-maximized;
     callback window-minimize();
     callback window-toggle-maximize();
@@ -1336,6 +1401,14 @@ export component MainWindow inherits Window {
     in-out property <float> volume: 0.5;
     property <float> audible-volume: 0.5;
     in-out property <int> page: 0; // 0 inicio · 1 búsqueda · 2 lista
+    // Configuración: 0 Apariencia · 1 Audio · 2 General · 3 Cuenta
+    in-out property <int> settings-tab: 0;
+    property <[{icon: string, label: string}]> settings-tabs: [
+        { icon: Icons.palette, label: root.pref-lang == "en" ? "Appearance" : "Apariencia" },
+        { icon: Icons.volume, label: "Audio" },
+        { icon: Icons.settings, label: "General" },
+        { icon: Icons.artist, label: root.pref-lang == "en" ? "Account" : "Cuenta" },
+    ];
     in-out property <bool> now-playing-open;
     in-out property <bool> sidebar-visible: true;
     property <int> home-filter: 0;
@@ -1497,11 +1570,11 @@ export component MainWindow inherits Window {
                 spacing: 0px;
 
             Rectangle {
-                height: 174px;
+                height: 174px + root.mac-top;
                 background: transparent;
                 VerticalLayout {
                     padding: 14px;
-                    padding-top: 22px;
+                    padding-top: 22px + root.mac-top;
                     spacing: 8px;
                     HorizontalLayout {
                         spacing: 8px; alignment: stretch;
@@ -2268,39 +2341,141 @@ export component MainWindow inherits Window {
             }
 
 
-            if root.page == 4: ScrollView {
+            if root.page == 4: settings-page := Rectangle {
                 x: 0; y: 0; width: parent.width; height: parent.height;
-                HorizontalLayout {
-                    padding-left: root.width < 900px ? 16px : 28px;
-                    padding-right: root.width < 900px ? 16px : 28px;
-                    padding-top: 72px;
-                    padding-bottom: 24px;
-                    alignment: center;
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        max-width: 820px;
-                        spacing: 26px;
-                        alignment: start;
+                property <bool> wide: self.width >= 980px;
+                settings-sv := ScrollView {
+                    x: 0; y: 0; width: parent.width; height: parent.height;
+                    HorizontalLayout {
+                        width: settings-sv.visible-width;
+                        // Centrado con ancho máximo de 1100px (márgenes mínimos de 16/32px).
+                        padding-left: max(root.width < 900px ? 16px : 32px, (settings-sv.visible-width - 1100px) / 2);
+                        padding-right: max(root.width < 900px ? 16px : 32px, (settings-sv.visible-width - 1100px) / 2);
+                        padding-top: 72px + root.mac-top;
+                        padding-bottom: 24px;
                         VerticalLayout {
-                            spacing: 4px;
-                            Text { text: I18n.settings-title; color: white; font-family: Theme.display-font; font-size: 34px; font-weight: 900; letter-spacing: -1px; horizontal-alignment: left; }
-                            Text { text: I18n.settings-subtitle; color: Theme.sub; font-size: 13px; horizontal-alignment: left; }
-                        }
-                        SettingGroup {
-                            title: I18n.settings-group-audio;
+                            horizontal-stretch: 1;
+                            spacing: 22px;
+                            alignment: start;
+
+                            // ---- Encabezado: tu perfil y versión ----
+                            Rectangle {
+                                height: root.width < 900px ? 112px : 132px; border-radius: 28px; clip: true;
+                                background: @linear-gradient(120deg, Theme.green.mix(#101014, 0.55) 0%, Theme.green.mix(#101014, 0.28) 55%, Theme.green.mix(#101014, 0.12) 100%);
+                                border-width: 1px; border-color: Theme.green.with-alpha(0.25);
+                                Rectangle { x: parent.width - 220px; y: -80px; width: 300px; height: 300px; border-radius: 150px; background: #ffffff0d; }
+                                Rectangle { x: parent.width - 120px; y: 40px; width: 180px; height: 180px; border-radius: 90px; background: #ffffff08; }
+                                HorizontalLayout {
+                                    padding: root.width < 900px ? 18px : 24px; spacing: 18px;
+                                    Rectangle {
+                                        width: root.width < 900px ? 72px : 84px; height: self.width; y: (parent.height - self.height) / 2;
+                                        border-radius: self.width / 2; clip: true; background: Theme.green;
+                                        border-width: 3px; border-color: #ffffff30;
+                                        Text { text: "♪"; color: white; font-size: 28px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; }
+                                        Image { width: 100%; height: 100%; source: root.my-profile-image; image-fit: cover; }
+                                    }
+                                    VerticalLayout {
+                                        horizontal-stretch: 1; alignment: center; spacing: 4px;
+                                        Text { text: I18n.settings-title; color: white; font-family: Theme.display-font; font-size: root.width < 900px ? 26px : 32px; font-weight: 900; letter-spacing: -0.8px; horizontal-alignment: left; overflow: elide; }
+                                        Text { text: (root.user-name == "" ? I18n.account-default : root.user-name) + " · " + (root.app-version == "" ? "v0.1.0" : root.app-version); color: #ffffffc0; font-size: 13px; horizontal-alignment: left; overflow: elide; }
+                                    }
+                                    if root.width >= 760px: Rectangle {
+                                        width: hero-btn.width;
+                                        hero-btn := TonalButton { y: (parent.height - self.height) / 2; text: I18n.btn-view-profile; clicked => { root.open-profile(); } }
+                                    }
+                                }
+                            }
+
+                            // ---- Pestañas arriba (ventanas estrechas) ----
+                            if !settings-page.wide: Flickable {
+                                height: 44px;
+                                viewport-width: max(self.width, tabs-row.preferred-width);
+                                tabs-row := HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    for tab[ti] in root.settings-tabs: SettingsTab {
+                                        compact: true; icon-d: tab.icon; label: tab.label; selected: root.settings-tab == ti;
+                                        clicked => { root.settings-tab = ti; }
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 28px; alignment: stretch;
+                                // ---- Riel lateral (ventanas anchas) ----
+                                if settings-page.wide: VerticalLayout {
+                                    width: 220px; spacing: 4px; alignment: start;
+                                    for tab[ti] in root.settings-tabs: SettingsTab {
+                                        compact: false; icon-d: tab.icon; label: tab.label; selected: root.settings-tab == ti;
+                                        clicked => { root.settings-tab = ti; }
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1; spacing: 22px; alignment: start;
+
+                                    // ---- Apariencia ----
+                                    if root.settings-tab == 0: SettingGroup {
+                                        title: root.pref-lang == "en" ? "Color theme" : "Tema de color";
+                                        subtitle: root.pref-lang == "en" ? "One color paints the whole app: sidebar, player, pages, artist profiles and lyrics." : "Un solo color pinta toda la app: barra lateral, reproductor, páginas, perfiles de artista y letras.";
+                                        SettingRow {
+                                            title: root.pref-lang == "en" ? "App color" : "Color de la app";
+                                            detail: root.pref-lang == "en" ? "«D» keeps the colors of each cover." : "«D» mantiene los colores de cada portada.";
+                                            ColorSwatches {
+                                                palette: root.bar-palette; selected: root.pref-app-color;
+                                                first-fill: root.track-accent.mix(root.track-pill, 0.6); first-label: "D";
+                                                first-name: root.pref-lang == "en" ? "Default" : "Predeterminado";
+                                                picked(i) => { root.pref-app-color = i; root.pref-changed(); }
+                                            }
+                                        }
+                                        SettingRow {
+                                            title: root.pref-lang == "en" ? "Player bar" : "Barra del reproductor";
+                                            detail: root.pref-lang == "en" ? "Auto follows the cover; Dark and Light keep a fixed background." : "Auto sigue la portada; Oscuro y Claro mantienen un fondo fijo.";
+                                            last: true;
+                                            HorizontalLayout {
+                                                spacing: 8px;
+                                                FilterChip { label: "Auto"; selected: root.pref-bar-mode == 0; clicked => { root.pref-bar-mode = 0; root.pref-changed(); } }
+                                                FilterChip { label: root.pref-lang == "en" ? "Dark" : "Oscuro"; selected: root.pref-bar-mode == 1; clicked => { root.pref-bar-mode = 1; root.pref-changed(); } }
+                                                FilterChip { label: root.pref-lang == "en" ? "Light" : "Claro"; selected: root.pref-bar-mode == 2; clicked => { root.pref-bar-mode = 2; root.pref-changed(); } }
+                                            }
+                                        }
+                                    }
+                                    if root.settings-tab == 0: SettingGroup {
+                                        title: root.pref-lang == "en" ? "Interface" : "Interfaz";
+                                        SettingRow {
+                                            title: root.pref-lang == "en" ? "Progress bar" : "Barra de progreso";
+                                            detail: root.pref-lang == "en" ? "Flat or Material 3 wave." : "Plana u ondulada estilo Material 3.";
+                                            HorizontalLayout {
+                                                spacing: 8px;
+                                                FilterChip { label: root.pref-lang == "en" ? "Flat" : "Plana"; selected: !root.pref-wavy-scrubber; clicked => { root.pref-wavy-scrubber = false; root.pref-changed(); } }
+                                                FilterChip { label: "Material 3"; selected: root.pref-wavy-scrubber; clicked => { root.pref-wavy-scrubber = true; root.pref-changed(); } }
+                                            }
+                                        }
+                                        SettingRow {
+                                            title: I18n.motion-title; detail: I18n.motion-detail;
+                                            SwitchBox { on <=> root.pref-motion; toggled => { root.pref-changed(); } }
+                                        }
+                                        SettingRow {
+                                            title: I18n.sidebar-title; detail: I18n.sidebar-detail;
+                                            last: true;
+                                            SwitchBox { on <=> root.sidebar-visible; toggled => { root.pref-changed(); } }
+                                        }
+                                    }
+
+                                    // ---- Audio ----
+                                    if root.settings-tab == 1: SettingGroup {
+                                        title: root.pref-lang == "en" ? "Sound" : "Sonido";
                             SettingRow {
                                 title: I18n.eq-title;
                                 detail: root.pref-eq-enabled ? I18n.eq-on-detail : I18n.eq-off-detail;
                                 SwitchBox { on <=> root.pref-eq-enabled; toggled => { root.pref-changed(); } }
                             }
                             Rectangle {
-                                height: 204px;
-                                background: #ffffff05;
+                                height: 210px;
+                                background: transparent;
                                 opacity: root.pref-eq-enabled ? 1.0 : 0.45;
                                 VerticalLayout {
                                     padding-left: 20px; padding-right: 20px; padding-top: 12px; padding-bottom: 14px; spacing: 10px;
                                     HorizontalLayout {
-                                        spacing: 6px;
+                                        spacing: 6px; alignment: start;
                                         for name[idx] in [I18n.eq-preset-flat, I18n.eq-preset-bass, I18n.eq-preset-pop, I18n.eq-preset-rock, I18n.eq-preset-vocal, I18n.eq-preset-electro, I18n.eq-preset-custom]: FilterChip {
                                             label: name;
                                             selected: root.pref-eq-preset == idx;
@@ -2327,12 +2502,16 @@ export component MainWindow inherits Window {
                                             { label: "16 kHz", db: root.pref-eq-bands.length > 8 ? root.pref-eq-bands[8] : 0 },
                                         ]: VerticalLayout {
                                             horizontal-stretch: 1; alignment: center; spacing: 4px;
-                                            VerticalEqSlider {
-                                                x: (parent.width - self.width) / 2;
-                                                active: root.pref-eq-enabled;
-                                                value: clamp((band.db + 12.0) / 24.0, 0, 1);
-                                                changed(v) => {
-                                                    root.set-eq-band(idx, round(v * 24.0 - 12.0));
+                                            // Contenedor flexible: el deslizador (32px fijo) ya no limita el ancho de la página.
+                                            Rectangle {
+                                                height: 112px;
+                                                VerticalEqSlider {
+                                                    x: (parent.width - self.width) / 2;
+                                                    active: root.pref-eq-enabled;
+                                                    value: clamp((band.db + 12.0) / 24.0, 0, 1);
+                                                    changed(v) => {
+                                                        root.set-eq-band(idx, round(v * 24.0 - 12.0));
+                                                    }
                                                 }
                                             }
                                             Text {
@@ -2345,10 +2524,6 @@ export component MainWindow inherits Window {
                                         }
                                     }
                                 }
-                            }
-                            HorizontalLayout {
-                                padding-left: 20px; padding-right: 20px;
-                                Rectangle { height: 1px; background: #ffffff10; }
                             }
                             SettingRow {
                                 title: I18n.crossfade-title;
@@ -2378,105 +2553,78 @@ export component MainWindow inherits Window {
                                     }
                                 }
                             }
-                            SettingRow {
-                                title: I18n.normalise-title; detail: I18n.normalise-detail;
-                                SwitchBox { on <=> root.pref-normalise; toggled => { root.pref-changed(); } }
+                                        SettingRow {
+                                            title: I18n.normalise-title; detail: I18n.normalise-detail;
+                                            last: true;
+                                            SwitchBox { on <=> root.pref-normalise; toggled => { root.pref-changed(); } }
+                                        }
+                                    }
+                                    if root.settings-tab == 1: SettingGroup {
+                                        title: root.pref-lang == "en" ? "Playback" : "Reproducción";
+                                        SettingRow {
+                                            title: I18n.lyrics-open-title; detail: I18n.lyrics-open-detail;
+                                            SwitchBox { on <=> root.pref-lyrics; toggled => { root.pref-changed(); } }
+                                        }
+                                        SettingRow {
+                                            title: I18n.soloist-title; detail: I18n.soloist-detail;
+                                            last: true;
+                                            TonalButton { text: I18n.btn-configure; clicked => { root.soloist-open-panel(); } }
+                                        }
+                                    }
+
+                                    // ---- General ----
+                                    if root.settings-tab == 2: SettingGroup {
+                                        title: "General";
+                                        SettingRow {
+                                            title: I18n.lang-label; detail: I18n.lang-detail;
+                                            HorizontalLayout {
+                                                spacing: 8px;
+                                                FilterChip { label: "Español"; selected: root.pref-lang == "es"; clicked => { root.select-lang("es"); } }
+                                                FilterChip { label: "English"; selected: root.pref-lang == "en"; clicked => { root.select-lang("en"); } }
+                                            }
+                                        }
+                                        SettingRow {
+                                            title: I18n.battery-title; detail: I18n.battery-detail;
+                                            SwitchBox { on <=> root.pref-battery-saver; toggled => { root.pref-changed(); } }
+                                        }
+                                        SettingRow {
+                                            title: I18n.tray-title; detail: I18n.tray-detail;
+                                            SwitchBox { on <=> root.pref-tray; toggled => { root.pref-changed(); } }
+                                        }
+                                        SettingRow {
+                                            title: I18n.cache-title; detail: root.cache-message == "" ? I18n.cache-detail : root.cache-message;
+                                            last: true;
+                                            TonalButton { text: I18n.btn-clear; clicked => { root.clear-cache(); } }
+                                        }
+                                    }
+
+                                    // ---- Cuenta ----
+                                    if root.settings-tab == 3: SettingGroup {
+                                        title: I18n.settings-group-account;
+                                        SettingRow {
+                                            title: root.user-name == "" ? I18n.account-default : root.user-name; detail: I18n.account-detail;
+                                            TonalButton { text: I18n.btn-view-profile; clicked => { root.open-profile(); } }
+                                        }
+                                        SettingRow {
+                                            title: I18n.updates-title;
+                                            detail: root.update-status != "" ? (root.app-version + " · " + root.update-status) : (root.app-version == "" ? "v0.1.0" : root.app-version);
+                                            TonalButton {
+                                                text: root.update-busy ? I18n.btn-updating : (root.update-available ? I18n.btn-update-now : I18n.btn-check-update);
+                                                enabled: !root.update-busy;
+                                                clicked => { root.check-update(); }
+                                            }
+                                        }
+                                        SettingRow {
+                                            title: I18n.sign-out-title; detail: I18n.sign-out-detail;
+                                            last: true;
+                                            TonalButton { text: I18n.btn-sign-out; danger: true; clicked => { root.sign-out(); } }
+                                        }
+                                    }
+                                    Text { text: (root.app-version == "" ? "v0.1.0" : root.app-version) + " · " + I18n.footer-premium; color: Theme.sub; font-size: 11px; horizontal-alignment: left; }
+                                }
                             }
-                            SettingRow {
-                                title: I18n.lyrics-open-title; detail: I18n.lyrics-open-detail;
-                                SwitchBox { on <=> root.pref-lyrics; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: I18n.soloist-title; detail: I18n.soloist-detail;
-                                last: true;
-                                Button { text: I18n.btn-configure; clicked => { root.soloist-open-panel(); } }
-                            }
+                            Rectangle { height: 112px; background: transparent; }
                         }
-                        SettingGroup {
-                            title: I18n.settings-group-appearance;
-                            SettingRow {
-                                title: I18n.lang-label; detail: I18n.lang-detail;
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    FilterChip { label: "Español"; selected: root.pref-lang == "es"; clicked => { root.select-lang("es"); } }
-                                    FilterChip { label: "English"; selected: root.pref-lang == "en"; clicked => { root.select-lang("en"); } }
-                                }
-                            }
-                            SettingRow {
-                                title: I18n.motion-title; detail: I18n.motion-detail;
-                                SwitchBox { on <=> root.pref-motion; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: I18n.battery-title;
-                                detail: I18n.battery-detail;
-                                SwitchBox { on <=> root.pref-battery-saver; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: I18n.sidebar-title; detail: I18n.sidebar-detail;
-                                SwitchBox { on <=> root.sidebar-visible; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: I18n.tray-title; detail: I18n.tray-detail;
-                                SwitchBox { on <=> root.pref-tray; toggled => { root.pref-changed(); } }
-                            }
-                            SettingRow {
-                                title: root.pref-lang == "en" ? "Playback progress bar" : "Barra de reproducción";
-                                detail: root.pref-lang == "en" ? "Choose between the flat bar or the Material 3 wavy bar." : "Elige entre la barra plana o la barra ondulada estilo Material 3.";
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    FilterChip { label: root.pref-lang == "en" ? "Flat" : "Plana"; selected: !root.pref-wavy-scrubber; clicked => { root.pref-wavy-scrubber = false; root.pref-changed(); } }
-                                    FilterChip { label: "Material 3"; selected: root.pref-wavy-scrubber; clicked => { root.pref-wavy-scrubber = true; root.pref-changed(); } }
-                                }
-                            }
-                            SettingRow {
-                                title: root.pref-lang == "en" ? "Player theme" : "Tema del reproductor";
-                                detail: root.pref-lang == "en" ? "Auto follows the album cover; Dark and Light keep a fixed background." : "Auto sigue la portada; Oscuro y Claro mantienen un fondo fijo.";
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    FilterChip { label: "Auto"; selected: root.pref-bar-mode == 0; clicked => { root.pref-bar-mode = 0; root.pref-changed(); } }
-                                    FilterChip { label: root.pref-lang == "en" ? "Dark" : "Oscuro"; selected: root.pref-bar-mode == 1; clicked => { root.pref-bar-mode = 1; root.pref-changed(); } }
-                                    FilterChip { label: root.pref-lang == "en" ? "Light" : "Claro"; selected: root.pref-bar-mode == 2; clicked => { root.pref-bar-mode = 2; root.pref-changed(); } }
-                                }
-                            }
-                            SettingRow {
-                                title: root.pref-lang == "en" ? "App color theme" : "Tema de color de la app";
-                                detail: root.pref-lang == "en" ? "One color for everything: sidebar, player, pages, artist profiles and lyrics. «D» keeps the default colors from each cover." : "Un solo color para todo: barra lateral, reproductor, páginas, perfiles de artista y letras. «D» mantiene los colores de cada portada.";
-                                last: true;
-                                ColorSwatches {
-                                    palette: root.bar-palette; selected: root.pref-app-color;
-                                    first-fill: root.track-accent.mix(root.track-pill, 0.6); first-label: "D";
-                                    first-name: root.pref-lang == "en" ? "Default" : "Predeterminado";
-                                    picked(i) => { root.pref-app-color = i; root.pref-changed(); }
-                                }
-                            }
-                        }
-                        SettingGroup {
-                            title: I18n.settings-group-account;
-                            SettingRow {
-                                title: root.user-name == "" ? I18n.account-default : root.user-name; detail: I18n.account-detail;
-                                Button { text: I18n.btn-view-profile; clicked => { root.open-profile(); } }
-                            }
-                            SettingRow {
-                                title: I18n.cache-title; detail: root.cache-message == "" ? I18n.cache-detail : root.cache-message;
-                                Button { text: I18n.btn-clear; clicked => { root.clear-cache(); } }
-                            }
-                            SettingRow {
-                                title: I18n.updates-title;
-                                detail: root.update-status != "" ? (root.app-version + " · " + root.update-status) : (root.app-version == "" ? "v0.1.0" : root.app-version);
-                                Button {
-                                    text: root.update-busy ? I18n.btn-updating : (root.update-available ? I18n.btn-update-now : I18n.btn-check-update);
-                                    enabled: !root.update-busy;
-                                    clicked => { root.check-update(); }
-                                }
-                            }
-                            SettingRow {
-                                title: I18n.sign-out-title; detail: I18n.sign-out-detail;
-                                last: true;
-                                Button { text: I18n.btn-sign-out; clicked => { root.sign-out(); } }
-                            }
-                        }
-                        Text { text: (root.app-version == "" ? "v0.1.0" : root.app-version) + " · " + I18n.footer-premium; color: Theme.sub; font-size: 11px; horizontal-alignment: left; }
-                        Rectangle { height: 112px; background: transparent; }
                     }
                 }
             }
@@ -2673,8 +2821,9 @@ export component MainWindow inherits Window {
 
             // ---- Barra superior de navegación (Píldora < | > y botón circular de barra lateral) ----
             if !root.now-playing-open: Rectangle {
-                x: 18px;
-                y: 14px;
+                // En macOS, sin barra lateral, se aparta de los botones de semáforo (y se alinea con ellos).
+                x: root.is-macos && !root.sidebar-visible ? 88px : 18px;
+                y: root.is-macos && !root.sidebar-visible ? 2px : 14px;
                 width: 120px;
                 height: 34px;
                 background: transparent;
@@ -3116,7 +3265,7 @@ export component MainWindow inherits Window {
 
             // ---- Barra superior (botones tonales Material 3) ----
             HorizontalLayout {
-                x: 32px; y: 22px; height: 40px; spacing: 10px;
+                x: root.is-macos ? 88px : 32px; y: root.is-macos ? 12px : 22px; height: 40px; spacing: 10px;
                 opacity: root.np-controls-visible ? 1 : 0;
                 animate opacity { duration: 350ms; easing: ease-in-out; }
 
@@ -3168,7 +3317,7 @@ export component MainWindow inherits Window {
 
             // Botón segmentado Letra | Cola (Material 3), arriba a la derecha (deja sitio a los botones de ventana en Windows).
             np-pill := TouchArea {
-                x: parent.width - self.width - (root.is-macos ? 32px : 168px); y: 22px;
+                x: parent.width - self.width - (root.is-macos ? 32px : 168px); y: root.is-macos ? 12px : 22px;
                 width: 132px; height: 40px;
                 opacity: root.np-controls-visible ? 1 : 0;
                 animate opacity { duration: 350ms; easing: ease-in-out; }
@@ -3948,7 +4097,7 @@ export component MainWindow inherits Window {
 
     // ---- Barra superior sin bordes: arrastre + cápsula semitransparente de controles ----
     TouchArea {
-        x: 6px; y: 2px; width: max(0px, parent.width - 144px); height: 8px;
+        x: root.is-macos ? 80px : 6px; y: 2px; width: max(0px, parent.width - self.x - (root.is-macos ? 0px : 138px)); height: root.is-macos ? 10px : 8px;
         pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.window-drag(); } }
     }
     TouchArea {
