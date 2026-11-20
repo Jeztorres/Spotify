@@ -272,6 +272,9 @@ fn reset_profile_view(ui: &MainWindow, app: &mut App) {
     ui.set_profile_name("".into());
     ui.set_profile_stats("".into());
     ui.set_profile_image(Image::default());
+    ui.set_profile_tint(slint::Color::from_rgb_u8(40, 44, 60));
+    ui.set_profile_pill(slint::Color::from_rgb_u8(52, 57, 78));
+    ui.set_profile_accent(slint::Color::from_rgb_u8(190, 190, 190));
 }
 
 /// Perfil de otro usuario (`/users/{id}`): creador de una playlist, seguidor, seguido…
@@ -568,7 +571,16 @@ fn apply_profile(ui: &MainWindow, app: &mut App, reply: Result<Value, String>, m
     if let Some(url) = p.get("image_url").or_else(|| p.get("imageUrl")).and_then(Value::as_str).and_then(image_url) {
         let visit = app.settings.visit;
         load_cover(app, &url, 400, move |ui, app, d| {
-            if app.settings.visit == visit || is_me { ui.set_profile_image(to_image(d)); }
+            if app.settings.visit == visit || is_me {
+                if let Some(c) = d.color {
+                    ui.set_profile_accent(slint::Color::from_rgb_u8(c[0], c[1], c[2]));
+                    let [r, g, b] = color::deep(c);
+                    ui.set_profile_tint(slint::Color::from_rgb_u8(r, g, b));
+                    let [pr, pg, pb] = color::pill(c);
+                    ui.set_profile_pill(slint::Color::from_rgb_u8(pr, pg, pb));
+                }
+                ui.set_profile_image(to_image(d));
+            }
         });
     }
 
@@ -653,6 +665,9 @@ fn sign_out(ui: &MainWindow, app: &mut App) {
     ui.set_page(0);
     ui.set_profile_name("".into());
     ui.set_profile_image(Image::default());
+    ui.set_profile_tint(slint::Color::from_rgb_u8(40, 44, 60));
+    ui.set_profile_pill(slint::Color::from_rgb_u8(52, 57, 78));
+    ui.set_profile_accent(slint::Color::from_rgb_u8(190, 190, 190));
     ui.set_user_name("".into());
     set_login(ui, "needs-login", "Sesión cerrada. Vuelve a iniciar sesión para continuar.");
 }

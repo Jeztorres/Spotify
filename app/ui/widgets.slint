@@ -68,9 +68,9 @@ export component RoundIconButton inherits Rectangle {
     border-radius: self.height / 2;
     background: root.active
         ? (ta.pressed ? #ffffff40 : (ta.has-hover ? #ffffff32 : #ffffff24))
-        : (ta.pressed ? #ffffff2a : (ta.has-hover ? #ffffff1c : transparent));
-    border-width: root.active ? 1px : 0px;
-    border-color: root.active ? #ffffff33 : transparent;
+        : (ta.pressed ? #ffffff2a : (ta.has-hover ? #ffffff1e : #ffffff10));
+    border-width: 1px;
+    border-color: root.active ? #ffffff44 : #ffffff1c;
     animate background { duration: 130ms; easing: ease-out; }
     IconPath {
         d: root.d;

@@ -1274,6 +1274,9 @@ export component MainWindow inherits Window {
     callback open-profile();
     callback sign-out();
     in property <image> profile-image;
+    in property <color> profile-tint: #282c3c;
+    in property <color> profile-pill: #34394e;
+    in property <color> profile-accent: #bebebe;
     in property <string> profile-name;
     in property <string> profile-stats;
     in property <string> profile-playlists-count;
@@ -1892,11 +1895,12 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     alignment: start; spacing: 14px; padding-top: 12px;
                                     PlayPauseButton { width: 64px; height: 64px; accent: root.artist-accent; enabled: root.tracks.length > 0; clicked => { root.play-list(); } }
-                                    Rectangle {
-                                        width: 44px; height: 44px; border-radius: 22px;
+                                    RoundIconButton {
+                                        width: 44px; height: 44px; icon-size: 20px;
                                         y: (parent.height - self.height) / 2;
-                                        background: root.artist-accent.with-alpha(0.14); border-width: 1px; border-color: root.artist-accent.with-alpha(0.3);
-                                        RoundIconButton { x: 6px; y: 6px; d: Icons.shuffle; active: root.shuffle; active-color: root.artist-accent; icon-color: root.artist-accent; label: "Aleatorio"; clicked => { root.toggle-shuffle(); } }
+                                        d: Icons.shuffle; active: root.shuffle;
+                                        active-color: root.artist-accent; icon-color: root.artist-accent;
+                                        label: "Aleatorio"; clicked => { root.toggle-shuffle(); }
                                     }
                                     Rectangle {
                                         y: (parent.height - self.height) / 2;
@@ -2320,14 +2324,14 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                     spacing: 24px; alignment: start;
                     Rectangle {
-                        background: @linear-gradient(180deg, #1db9542b 0%, #1db9540d 62%, transparent 100%);
+                        background: @linear-gradient(180deg, root.profile-tint 0%, Theme.bg 100%);
                         HorizontalLayout {
                             padding-left: 32px; padding-right: 32px; padding-top: 76px; padding-bottom: 24px;
                             spacing: 28px; alignment: start;
                             Rectangle {
                                 width: root.width < 1100px ? 140px : 188px; height: self.width;
-                                border-radius: self.width / 2; clip: true; background: Theme.hover;
-                                border-width: 2px; border-color: #ffffff28;
+                                border-radius: self.width / 2; clip: true; background: root.profile-pill;
+                                border-width: 2px; border-color: root.profile-accent;
                                 drop-shadow-blur: 28px; drop-shadow-color: #00000099;
                                 Text { text: "♪"; color: Theme.sub; font-size: 48px; horizontal-alignment: center; vertical-alignment: center; }
                                 Image { width: 100%; height: 100%; source: root.profile-image; image-fit: cover; }
@@ -2336,10 +2340,10 @@ export component MainWindow inherits Window {
                                 alignment: end; spacing: 10px; horizontal-stretch: 1;
                                 Rectangle {
                                     height: 22px; width: prof-badge.preferred-width + 20px; border-radius: 11px;
-                                    background: #ffffff18; border-width: 1px; border-color: #ffffff24;
+                                    background: root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.28);
                                     prof-badge := Text {
                                         text: root.profile-is-me ? I18n.profile-badge-me : I18n.profile-badge-other;
-                                        color: #ffffffe0; font-size: 10px; font-weight: 800; letter-spacing: 0.8px;
+                                        color: white; font-size: 10px; font-weight: 800; letter-spacing: 0.8px;
                                         horizontal-alignment: center; vertical-alignment: center;
                                     }
                                 }
@@ -2353,18 +2357,18 @@ export component MainWindow inherits Window {
                                     spacing: 8px; alignment: start;
                                     if root.profile-playlists-count != "": Rectangle {
                                         height: 30px; width: pl-stat.preferred-width + 24px; border-radius: 15px;
-                                        background: #ffffff12; border-width: 1px; border-color: #ffffff1f;
-                                        pl-stat := Text { text: root.profile-playlists-count; color: #ffffffe8; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                                        background: root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.25);
+                                        pl-stat := Text { text: root.profile-playlists-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                                     }
                                     if root.profile-followers-count != "": Rectangle {
                                         height: 30px; width: flw-stat.preferred-width + 24px; border-radius: 15px;
-                                        background: flw-ta.has-hover ? #ffffff24 : #ffffff12; border-width: 1px; border-color: #ffffff1f;
+                                        background: flw-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.25);
                                         flw-stat := Text { text: root.profile-followers-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                                         flw-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-profile-people(1); } }
                                     }
                                     if root.profile-following-count != "": Rectangle {
                                         height: 30px; width: fng-stat.preferred-width + 24px; border-radius: 15px;
-                                        background: fng-ta.has-hover ? #ffffff24 : #ffffff12; border-width: 1px; border-color: #ffffff1f;
+                                        background: fng-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.25);
                                         fng-stat := Text { text: root.profile-following-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                                         fng-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-profile-people(0); } }
                                     }
@@ -2373,19 +2377,19 @@ export component MainWindow inherits Window {
                                     alignment: start; spacing: 10px; padding-top: 2px;
                                     if root.profile-is-me: Rectangle {
                                         width: cfg-txt.preferred-width + 28px; height: 34px; border-radius: 17px;
-                                        background: cfg-ta.has-hover ? #ffffff24 : #ffffff12;
-                                        border-width: 1px; border-color: #ffffff38;
+                                        background: cfg-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill;
+                                        border-width: 1px; border-color: root.profile-pill.brighter(0.32);
                                         cfg-txt := Text { text: I18n.settings-title; color: white; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                                         cfg-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-settings(); } }
                                     }
                                     if !root.profile-is-me: Rectangle {
                                         width: follow-prof-txt.preferred-width + 28px; height: 34px; border-radius: 17px;
-                                        background: root.target-following ? Theme.green.with-alpha(0.26) : (follow-prof-ta.has-hover ? #ffffff22 : transparent);
-                                        border-width: 1px; border-color: root.target-following ? Theme.green-bright : #ffffff55;
+                                        background: root.target-following ? root.profile-accent : (follow-prof-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill);
+                                        border-width: 1px; border-color: root.target-following ? root.profile-accent : root.profile-pill.brighter(0.32);
                                         opacity: root.target-follow-busy ? 0.55 : 1;
                                         follow-prof-txt := Text {
                                             text: root.target-following ? I18n.profile-following : I18n.profile-follow;
-                                            color: white; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center;
+                                            color: root.target-following ? Theme.bg : white; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center;
                                         }
                                         follow-prof-ta := TouchArea { enabled: !root.target-follow-busy; mouse-cursor: pointer; clicked => { root.toggle-follow(); } }
                                     }
