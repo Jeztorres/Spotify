@@ -1,6 +1,10 @@
 // Sin ventana de consola en Windows.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+#[macro_use]
+extern crate rust_i18n;
+rust_i18n::i18n!("locales", fallback = "es");
+
 mod browse;
 mod actions;
 mod connect;
@@ -36,7 +40,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // La interfaz se compila con la macro (sin build.rs): Windows bloquea ejecutables de compilación sin firmar.
-slint::slint!(export { MainWindow, Theme, LibraryEntry, CardEntry, TrackEntry, QueueRow, LyricEntry, ConnectDevice, GenreEntry } from "ui/main.slint";);
+slint::slint!(export { MainWindow, Theme, I18n, LibraryEntry, CardEntry, TrackEntry, QueueRow, LyricEntry, ConnectDevice, GenreEntry } from "ui/main.slint";);
 
 /// Tipografía equivalente a SF Pro: Segoe UI Variable en Windows 11 (Display para títulos grandes,
 /// Text para el resto) y Segoe UI en Windows 10. Sus cifras ya son tabulares (mismo ancho), así que

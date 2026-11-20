@@ -19,6 +19,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 
 arboard = { version = "3.7", default-features = false }
 souvlaki = "0.8"
+rust-i18n = "3"
 
 [target.'cfg(windows)'.dependencies]
 # Credenciales en el Administrador de credenciales de Windows.

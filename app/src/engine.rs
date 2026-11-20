@@ -32,7 +32,7 @@ fn is_shared_read(cmd: &str) -> bool {
         cmd,
         "rootlist" | "playlist_items" | "playlist_header" | "album_details" | "album_tracks" | "artist_top"
             | "artist_albums" | "artist_related" | "artist_overview" | "recently_played" | "home_sections"
-            | "search" | "artists" | "user_profile" | "user_followers" | "user_following" | "lyrics"
+            | "search" | "artists" | "track_credits" | "user_profile" | "user_followers" | "user_following" | "lyrics"
             | "liked_contains" | "liked_items" | "pins" | "canvas" | "devices" | "recommend"
     )
 }
@@ -77,7 +77,8 @@ fn binary_name() -> &'static str {
     if cfg!(windows) { "spotifymac-engine.exe" } else { "spotifymac-engine" }
 }
 
-/// Busca el binario del motor: junto al ejecutable, por variable de entorno o en `Engine/target/release` (desarrollo).
+/// Busca el binario del motor: junto al ejecutable (o su destino real), directorio de trabajo,
+/// rutas estándar de instalación, `PATH`, variable de entorno o `Engine/target/release` (desarrollo).
 pub fn find_binary() -> Option<PathBuf> {
     let name = binary_name();
     let mut candidates = Vec::new();
@@ -90,6 +91,34 @@ pub fn find_binary() -> Option<PathBuf> {
             // target/release → raíz del repo → Engine/target/release
             candidates.push(dir.join("../../Engine/target/release").join(name));
         }
+        if let Ok(canon) = std::fs::canonicalize(&exe) {
+            if let Some(dir) = canon.parent() {
+                candidates.push(dir.join(name));
+                candidates.push(dir.join("../../Engine/target/release").join(name));
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(name));
+    }
+    candidates.push(data_dir().join(name));
+    #[cfg(windows)]
+    {
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            let local = PathBuf::from(local);
+            candidates.push(local.join("Programs\\SpotifyMac").join(name));
+            candidates.push(local.join("SpotifyMac").join(name));
+        }
+        for env_key in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(pf) = std::env::var_os(env_key) {
+                candidates.push(PathBuf::from(pf).join("SpotifyMac").join(name));
+            }
+        }
+    }
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            candidates.push(dir.join(name));
+        }
     }
     candidates.into_iter().find(|p| p.is_file())
 }
@@ -97,7 +126,13 @@ pub fn find_binary() -> Option<PathBuf> {
 impl Engine {
     /// Arranca el proceso. `on_event` se llama desde un hilo propio con cada evento del motor.
     pub fn spawn(on_event: impl Fn(EngineEvent) + Send + 'static) -> Result<Arc<Engine>, String> {
-        let bin = find_binary().ok_or_else(|| format!("No se encontró {} junto a la app", binary_name()))?;
+        let bin = find_binary().ok_or_else(|| {
+            format!(
+                "No se encontró {} junto a la app ni en la carpeta de instalación. Copia {} junto al ejecutable o ejecuta el instalador.",
+                binary_name(),
+                binary_name()
+            )
+        })?;
         let mut cmd = Command::new(&bin);
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
         // Los errores del motor (nunca incluyen tokens) van a engine.log.

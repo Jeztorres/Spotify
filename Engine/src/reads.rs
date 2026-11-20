@@ -910,6 +910,26 @@ pub async fn artists(session: &Session, ids: &[String]) -> Result<Value> {
     Ok(json!({"artists": items}))
 }
 
+pub async fn track_credits(session: &Session, id: &str) -> Result<Value> {
+    if id.is_empty() || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err(anyhow!("id de canción inválido"));
+    }
+    let login = session.login5().auth_token().await?;
+    let client_token = session.spclient().client_token().await?;
+    let url = format!("https://spclient.wg.spotify.com/track-credits-view/v0/experimental/{id}/credits");
+    let response = http_client()
+        .get(&url)
+        .bearer_auth(&login.access_token)
+        .header("client-token", client_token)
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        return Err(anyhow!("track-credits-view respondió {}", response.status().as_u16()));
+    }
+    Ok(response.json::<Value>().await?)
+}
+
 /// Artistas relacionados por Pathfinder con el token de la sesión (login5 + client token).
 pub async fn artist_related(session: &Session, id: &str) -> Result<Value> {
     let login = session.login5().auth_token().await?;

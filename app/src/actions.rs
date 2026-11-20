@@ -237,6 +237,17 @@ fn open_track_menu_page(ui: &MainWindow, app: &mut App, track: Track, page: i32)
     ui.set_menu_error("".into());
     ui.set_menu_title(track.name.clone().into());
     ui.set_menu_artist(track.artist_line().into());
+    ui.set_menu_cover(Image::default());
+    if let Some(url) = track.image_url().map(str::to_owned) {
+        let track_uri = track.uri.clone();
+        load_cover_with_priority(app, &url, 80, true, move |ui, app, decoded| {
+            if ui.get_track_menu_open()
+                && app.actions.menu_track.as_ref().map(|t| &t.uri) == Some(&track_uri)
+            {
+                ui.set_menu_cover(to_image(decoded));
+            }
+        });
+    }
     ui.set_menu_can_like(track.uri.starts_with("spotify:track:"));
     ui.set_menu_can_album(
         track
@@ -327,7 +338,7 @@ fn menu_action(ui: &MainWindow, app: &mut App, action: i32) {
             ui.set_track_menu_open(false);
             ui.set_info_open(true);
             ui.set_info_title(format!("Créditos · {}", track.name).into());
-            ui.set_info_text("Buscando la grabación exacta en MusicBrainz…".into());
+            ui.set_info_text("Buscando créditos de la canción…".into());
             ui.set_info_url("".into());
             let primary_id = track
                 .artists
@@ -345,8 +356,9 @@ fn menu_action(ui: &MainWindow, app: &mut App, action: i32) {
             fetch_artist_avatars(app, &track.artists);
             app.actions.info_gen += 1;
             let gen = app.actions.info_gen;
+            let engine = app.engine.clone();
             std::thread::spawn(move || {
-                let result = credits::load(&track);
+                let result = credits::load_with_engine(&track, engine.as_deref());
                 on_ui(move |ui, app| {
                     if gen != app.actions.info_gen {
                         return;
@@ -1097,7 +1109,9 @@ pub fn wire(ui: &MainWindow) {
     ui.on_open_info_source(|| {
         with_app(|ui, _| {
             let url = ui.get_info_url();
-            if url.starts_with("https://musicbrainz.org/recording/") {
+            if url.starts_with("https://musicbrainz.org/recording/")
+                || url.starts_with("https://open.spotify.com/track/")
+            {
                 open_in_browser(&url);
             }
         });

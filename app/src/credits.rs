@@ -148,6 +148,84 @@ pub(crate) fn get(path: &str, query: &[(&str, &str)]) -> Result<Value, String> {
     let response = request.call().map_err(|e| e.to_string())?;
     serde_json::from_reader(response.into_reader()).map_err(|e| e.to_string())
 }
+fn translate_role_title(title: &str) -> &str {
+    match title.to_lowercase().as_str() {
+        "performed by" | "performers" => "Interpretación",
+        "written by" => "Composición y letra",
+        "produced by" | "production" => "Producción",
+        "engineered by" | "engineering" => "Ingeniería",
+        "mixed by" => "Mezcla",
+        "mastered by" => "Masterización",
+        _ => title,
+    }
+}
+
+pub fn parse_spotify_credits(v: &Value) -> Option<String> {
+    let roles = v.get("roleCredits")?.as_array()?;
+    let mut blocks = Vec::new();
+    for role in roles {
+        let title = role.get("roleTitle").and_then(Value::as_str).unwrap_or("").trim();
+        let artists = role.get("artists").and_then(Value::as_array);
+        let mut lines = Vec::new();
+        if let Some(artists) = artists {
+            for a in artists {
+                let name = a.get("name").and_then(Value::as_str).unwrap_or("").trim();
+                if name.is_empty() {
+                    continue;
+                }
+                let subroles: Vec<&str> = a
+                    .get("subroles")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if subroles.is_empty() {
+                    lines.push(format!("• {name}"));
+                } else {
+                    lines.push(format!("• {name} ({})", subroles.join(", ")));
+                }
+            }
+        }
+        if !title.is_empty() && !lines.is_empty() {
+            blocks.push(format!("{}\n{}", translate_role_title(title), lines.join("\n")));
+        }
+    }
+    if blocks.is_empty() {
+        return None;
+    }
+    let sources: Vec<&str> = v
+        .get("sourceNames")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let footer = if sources.is_empty() {
+        "Fuente: Spotify".to_owned()
+    } else {
+        format!("Fuente: {}", sources.join(" · "))
+    };
+    Some(format!("{}\n\n{footer}", blocks.join("\n\n")))
+}
+
+pub fn load_with_engine(track: &Track, engine: Option<&crate::engine::Engine>) -> Result<(String, String), String> {
+    if let (Some(e), Some(id)) = (engine, track.uri.strip_prefix("spotify:track:")) {
+        if !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            if let Ok(val) = e.call("track_credits", serde_json::json!({ "id": id }), std::time::Duration::from_secs(10)) {
+                if let Some(text) = parse_spotify_credits(&val) {
+                    return Ok((text, format!("https://open.spotify.com/track/{id}")));
+                }
+            }
+        }
+    }
+    load(track)
+}
+
 pub fn load(track: &Track) -> Result<(String, String), String> {
     let Some(artist) = track.artists.first() else {
         return Ok((

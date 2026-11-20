@@ -34,26 +34,117 @@ fn prefs_path() -> std::path::PathBuf {
     engine::data_dir().join("prefs.json")
 }
 
+const EQ_BAND_COUNT: usize = 9;
+
 /// Carga las preferencias guardadas y las pone en la interfaz.
-fn eq_preset_bands(idx: i32) -> [f32; 5] {
+fn eq_preset_bands(idx: i32) -> [f32; EQ_BAND_COUNT] {
     match idx {
-        1 => [6.0, 4.0, 0.0, 0.0, 1.0],    // Graves
-        2 => [-1.0, 2.0, 4.0, 3.0, -1.0],  // Pop
-        3 => [5.0, 3.0, -2.0, 3.0, 5.0],   // Rock
-        4 => [-2.0, -1.0, 4.0, 4.0, 1.0],  // Vocal
-        5 => [6.0, 3.0, -1.0, 3.0, 5.0],   // Electro
-        _ => [0.0, 0.0, 0.0, 0.0, 0.0],    // Plano
+        1 => [6.0, 5.0, 4.0, 2.0, 0.0, 0.0, 0.0, 1.0, 1.0],       // Graves
+        2 => [-1.0, 0.0, 2.0, 3.0, 4.0, 3.0, 2.0, 0.0, -1.0],    // Pop
+        3 => [5.0, 4.0, 3.0, 0.0, -2.0, 1.0, 3.0, 4.0, 5.0],     // Rock
+        4 => [-2.0, -2.0, -1.0, 2.0, 4.0, 4.0, 3.0, 1.0, 0.0],   // Vocal
+        5 => [6.0, 5.0, 3.0, 0.0, -1.0, 1.0, 3.0, 4.0, 5.0],     // Electro
+        _ => [0.0; EQ_BAND_COUNT],                               // Plano
     }
 }
 
-fn get_eq_bands(ui: &MainWindow) -> [f32; 5] {
+fn get_eq_bands(ui: &MainWindow) -> [f32; EQ_BAND_COUNT] {
     use slint::Model;
     let model = ui.get_pref_eq_bands();
     std::array::from_fn(|i| model.row_data(i).unwrap_or(0.0).clamp(-12.0, 12.0))
 }
 
-fn set_eq_bands_ui(ui: &MainWindow, bands: [f32; 5]) {
+fn set_eq_bands_ui(ui: &MainWindow, bands: [f32; EQ_BAND_COUNT]) {
     ui.set_pref_eq_bands(ModelRc::new(VecModel::from(bands.to_vec())));
+}
+
+pub fn apply_i18n(ui: &MainWindow, lang: &str) {
+    let locale = if lang == "en" { "en" } else { "es" };
+    rust_i18n::set_locale(locale);
+    ui.set_pref_lang(locale.into());
+    let g = ui.global::<I18n>();
+    g.set_lang_label(t!("lang_label").as_ref().into());
+    g.set_lang_detail(t!("lang_detail").as_ref().into());
+    g.set_nav_home(t!("nav_home").as_ref().into());
+    g.set_nav_search(t!("nav_search").as_ref().into());
+    g.set_nav_library(t!("nav_library").as_ref().into());
+    g.set_search_filter_all(t!("search_filter_all").as_ref().into());
+    g.set_search_filter_tracks(t!("search_filter_tracks").as_ref().into());
+    g.set_search_filter_artists(t!("search_filter_artists").as_ref().into());
+    g.set_search_filter_albums(t!("search_filter_albums").as_ref().into());
+    g.set_search_filter_playlists(t!("search_filter_playlists").as_ref().into());
+    g.set_home_filter_all(t!("home_filter_all").as_ref().into());
+    g.set_home_filter_made_for_you(t!("home_filter_made_for_you").as_ref().into());
+    g.set_home_filter_recent(t!("home_filter_recent").as_ref().into());
+    g.set_home_refresh(t!("home_refresh").as_ref().into());
+    g.set_settings_title(t!("settings_title").as_ref().into());
+    g.set_settings_subtitle(t!("settings_subtitle").as_ref().into());
+    g.set_settings_group_audio(t!("settings_group_audio").as_ref().into());
+    g.set_settings_group_appearance(t!("settings_group_appearance").as_ref().into());
+    g.set_settings_group_account(t!("settings_group_account").as_ref().into());
+    g.set_eq_title(t!("eq_title").as_ref().into());
+    g.set_eq_on_detail(t!("eq_on_detail").as_ref().into());
+    g.set_eq_off_detail(t!("eq_off_detail").as_ref().into());
+    g.set_eq_preset_flat(t!("eq_preset_flat").as_ref().into());
+    g.set_eq_preset_bass(t!("eq_preset_bass").as_ref().into());
+    g.set_eq_preset_pop(t!("eq_preset_pop").as_ref().into());
+    g.set_eq_preset_rock(t!("eq_preset_rock").as_ref().into());
+    g.set_eq_preset_vocal(t!("eq_preset_vocal").as_ref().into());
+    g.set_eq_preset_electro(t!("eq_preset_electro").as_ref().into());
+    g.set_eq_preset_custom(t!("eq_preset_custom").as_ref().into());
+    g.set_crossfade_title(t!("crossfade_title").as_ref().into());
+    g.set_crossfade_off(t!("crossfade_off").as_ref().into());
+    g.set_crossfade_on_prefix(t!("crossfade_on_prefix").as_ref().into());
+    g.set_crossfade_on_suffix(t!("crossfade_on_suffix").as_ref().into());
+    g.set_normalise_title(t!("normalise_title").as_ref().into());
+    g.set_normalise_detail(t!("normalise_detail").as_ref().into());
+    g.set_lyrics_open_title(t!("lyrics_open_title").as_ref().into());
+    g.set_lyrics_open_detail(t!("lyrics_open_detail").as_ref().into());
+    g.set_soloist_title(t!("soloist_title").as_ref().into());
+    g.set_soloist_detail(t!("soloist_detail").as_ref().into());
+    g.set_btn_configure(t!("btn_configure").as_ref().into());
+    g.set_motion_title(t!("motion_title").as_ref().into());
+    g.set_motion_detail(t!("motion_detail").as_ref().into());
+    g.set_battery_title(t!("battery_title").as_ref().into());
+    g.set_battery_detail(t!("battery_detail").as_ref().into());
+    g.set_sidebar_title(t!("sidebar_title").as_ref().into());
+    g.set_sidebar_detail(t!("sidebar_detail").as_ref().into());
+    g.set_tray_title(t!("tray_title").as_ref().into());
+    g.set_tray_detail(t!("tray_detail").as_ref().into());
+    g.set_account_default(t!("account_default").as_ref().into());
+    g.set_account_detail(t!("account_detail").as_ref().into());
+    g.set_btn_view_profile(t!("btn_view_profile").as_ref().into());
+    g.set_cache_title(t!("cache_title").as_ref().into());
+    g.set_cache_detail(t!("cache_detail").as_ref().into());
+    g.set_btn_clear(t!("btn_clear").as_ref().into());
+    g.set_updates_title(t!("updates_title").as_ref().into());
+    g.set_btn_check_update(t!("btn_check_update").as_ref().into());
+    g.set_btn_update_now(t!("btn_update_now").as_ref().into());
+    g.set_btn_updating(t!("btn_updating").as_ref().into());
+    g.set_sign_out_title(t!("sign_out_title").as_ref().into());
+    g.set_sign_out_detail(t!("sign_out_detail").as_ref().into());
+    g.set_btn_sign_out(t!("btn_sign_out").as_ref().into());
+    g.set_footer_premium(t!("footer_premium").as_ref().into());
+    g.set_profile_badge_me(t!("profile_badge_me").as_ref().into());
+    g.set_profile_badge_other(t!("profile_badge_other").as_ref().into());
+    g.set_profile_follow(t!("profile_follow").as_ref().into());
+    g.set_profile_following(t!("profile_following").as_ref().into());
+    g.set_profile_recent_artists(t!("profile_recent_artists").as_ref().into());
+    g.set_profile_public_playlists(t!("profile_public_playlists").as_ref().into());
+    g.set_menu_add_like(t!("menu_add_like").as_ref().into());
+    g.set_menu_remove_like(t!("menu_remove_like").as_ref().into());
+    g.set_menu_add_queue(t!("menu_add_queue").as_ref().into());
+    g.set_menu_add_playlist(t!("menu_add_playlist").as_ref().into());
+    g.set_menu_new_playlist(t!("menu_new_playlist").as_ref().into());
+    g.set_menu_go_artist(t!("menu_go_artist").as_ref().into());
+    g.set_menu_go_radio(t!("menu_go_radio").as_ref().into());
+    g.set_menu_go_album(t!("menu_go_album").as_ref().into());
+    g.set_menu_credits(t!("menu_credits").as_ref().into());
+    g.set_menu_share(t!("menu_share").as_ref().into());
+    g.set_menu_copy_link(t!("menu_copy_link").as_ref().into());
+    g.set_btn_back(t!("btn_back").as_ref().into());
+    g.set_btn_close(t!("btn_close").as_ref().into());
+    g.set_btn_view_source(t!("btn_view_source").as_ref().into());
 }
 
 fn load_prefs(ui: &MainWindow) {
@@ -61,6 +152,8 @@ fn load_prefs(ui: &MainWindow) {
     let get = |key: &str, default: bool| saved.as_ref().and_then(|v| v.get(key)).and_then(Value::as_bool).unwrap_or(default);
     let get_f = |key: &str, default: f32| saved.as_ref().and_then(|v| v.get(key)).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(default);
     let get_i = |key: &str, default: i32| saved.as_ref().and_then(|v| v.get(key)).and_then(Value::as_i64).map(|x| x as i32).unwrap_or(default);
+    let lang = saved.as_ref().and_then(|v| v.get("lang")).and_then(Value::as_str).unwrap_or("es");
+    apply_i18n(ui, lang);
     ui.set_pref_motion(get("motion", true));
     ui.set_pref_battery_saver(get("battery_saver", false));
     ui.set_pref_lyrics(get("lyrics_on_open", false));
@@ -74,9 +167,11 @@ fn load_prefs(ui: &MainWindow) {
     ui.set_pref_eq_preset(preset);
     let mut bands = eq_preset_bands(preset);
     if let Some(arr) = saved.as_ref().and_then(|v| v.get("eq_bands")).and_then(Value::as_array) {
-        for (i, val) in arr.iter().take(5).enumerate() {
-            if let Some(db) = val.as_f64() {
-                bands[i] = (db as f32).clamp(-12.0, 12.0);
+        if arr.len() == EQ_BAND_COUNT {
+            for (i, val) in arr.iter().enumerate() {
+                if let Some(db) = val.as_f64() {
+                    bands[i] = (db as f32).clamp(-12.0, 12.0);
+                }
             }
         }
     }
@@ -93,6 +188,7 @@ fn save_prefs(ui: &MainWindow) {
     let sidebar = ui.get_sidebar_visible() || ui.get_sidebar_auto_hidden();
     let bands = get_eq_bands(ui);
     let value = json!({
+        "lang": ui.get_pref_lang().as_str(),
         "motion": ui.get_pref_motion(),
         "battery_saver": ui.get_pref_battery_saver(),
         "lyrics_on_open": ui.get_pref_lyrics(),
@@ -103,7 +199,7 @@ fn save_prefs(ui: &MainWindow) {
         "eq_enabled": ui.get_pref_eq_enabled(),
         "crossfade_secs": ui.get_pref_crossfade(),
         "eq_preset": ui.get_pref_eq_preset(),
-        "eq_bands": bands,
+        "eq_bands": bands.to_vec(),
     });
     let _ = std::fs::write(prefs_path(), value.to_string());
 }
@@ -593,10 +689,16 @@ pub fn wire(ui: &MainWindow) {
             sync_engine_prefs(ui, app);
         });
     });
+    ui.on_select_lang(|lang| {
+        with_app(|ui, _| {
+            apply_i18n(ui, &lang);
+            save_prefs(ui);
+        });
+    });
     ui.on_set_eq_band(|band, db| {
         with_app(|ui, app| {
             let idx = band as usize;
-            if idx < 5 {
+            if idx < EQ_BAND_COUNT {
                 let mut bands = get_eq_bands(ui);
                 bands[idx] = db.clamp(-12.0, 12.0);
                 set_eq_bands_ui(ui, bands);

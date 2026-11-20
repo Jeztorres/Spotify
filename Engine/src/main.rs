@@ -155,79 +155,60 @@ struct Engine {
     connect_off: AtomicBool,
 }
 
-#[derive(Clone, Copy)]
-struct Biquad {
-    b0: f64, b1: f64, b2: f64, a1: f64, a2: f64,
-    z: [[f64; 4]; 2],
-}
+const EQ_BANDS: usize = 9;
+const EQ_FREQS: [f64; EQ_BANDS] = [63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0];
 
-impl Biquad {
-    fn peaking(freq: f64, gain_db: f64) -> Self {
-        let mut s = Self { b0: 1.0, b1: 0.0, b2: 0.0, a1: 0.0, a2: 0.0, z: [[0.0; 4]; 2] };
-        s.set_gain(freq, gain_db);
-        s
-    }
-
-    fn set_gain(&mut self, freq: f64, gain_db: f64) {
-        if gain_db.abs() < 0.05 {
-            self.b0 = 1.0; self.b1 = 0.0; self.b2 = 0.0; self.a1 = 0.0; self.a2 = 0.0;
-            return;
-        }
-        let a = 10.0_f64.powf(gain_db / 40.0);
-        let w0 = 2.0 * std::f64::consts::PI * freq / 44100.0;
-        let alpha = w0.sin() / (2.0 * 1.0);
-        let cos_w0 = w0.cos();
-        let a0 = 1.0 + alpha / a;
-        self.b0 = (1.0 + alpha * a) / a0;
-        self.b1 = (-2.0 * cos_w0) / a0;
-        self.b2 = (1.0 - alpha * a) / a0;
-        self.a1 = (-2.0 * cos_w0) / a0;
-        self.a2 = (1.0 - alpha / a) / a0;
-    }
-
-    #[inline]
-    fn process(&mut self, ch: usize, x: f64) -> f64 {
-        let [x1, x2, y1, y2] = self.z[ch];
-        let y = self.b0 * x + self.b1 * x1 + self.b2 * x2 - self.a1 * y1 - self.a2 * y2;
-        self.z[ch] = [x, x1, y, y1];
-        y
-    }
+fn peaking_coeffs(freq: f64, gain_db: f64) -> biquad::Coefficients<f64> {
+    use biquad::{Coefficients, ToHertz, Type};
+    Coefficients::<f64>::from_params(Type::PeakingEQ(gain_db), 44100.hz(), freq.hz(), 1.414)
+        .unwrap_or_else(|_| Coefficients::<f64>::from_params(Type::PeakingEQ(0.0), 44100.hz(), freq.hz(), 1.414).unwrap())
 }
 
 struct EqSink {
     inner: Box<dyn Sink>,
     enabled: Arc<AtomicBool>,
-    bands: Arc<[AtomicI32; 5]>,
-    last_db: [i32; 5],
-    filters: [Biquad; 5],
+    bands: Arc<[AtomicI32; EQ_BANDS]>,
+    last_db: [i32; EQ_BANDS],
+    filters: [[biquad::DirectForm2Transposed<f64>; 2]; EQ_BANDS],
 }
 
 impl EqSink {
-    const FREQS: [f64; 5] = [60.0, 230.0, 910.0, 3600.0, 14000.0];
-
-    fn new(inner: Box<dyn Sink>, enabled: Arc<AtomicBool>, bands: Arc<[AtomicI32; 5]>) -> Self {
+    fn new(inner: Box<dyn Sink>, enabled: Arc<AtomicBool>, bands: Arc<[AtomicI32; EQ_BANDS]>) -> Self {
         let last_db = std::array::from_fn(|i| bands[i].load(Ordering::Relaxed));
-        let filters = std::array::from_fn(|i| Biquad::peaking(Self::FREQS[i], last_db[i] as f64 / 100.0));
+        let filters = std::array::from_fn(|i| {
+            let coeffs = peaking_coeffs(EQ_FREQS[i], last_db[i] as f64 / 100.0);
+            [
+                biquad::DirectForm2Transposed::<f64>::new(coeffs),
+                biquad::DirectForm2Transposed::<f64>::new(coeffs),
+            ]
+        });
         Self { inner, enabled, bands, last_db, filters }
     }
 }
 
 impl Sink for EqSink {
     fn start(&mut self) -> SinkResult<()> {
-        for f in &mut self.filters { f.z = [[0.0; 4]; 2]; }
+        use biquad::Biquad as _;
+        for ch_pair in &mut self.filters {
+            ch_pair[0].reset_state();
+            ch_pair[1].reset_state();
+        }
         self.inner.start()
     }
     fn stop(&mut self) -> SinkResult<()> { self.inner.stop() }
     fn write(&mut self, mut packet: AudioPacket, converter: &mut Converter) -> SinkResult<()> {
+        use biquad::Biquad as _;
         if !self.enabled.load(Ordering::Relaxed) {
             return self.inner.write(packet, converter);
         }
         let mut active = false;
-        for i in 0..5 {
+        for i in 0..EQ_BANDS {
             let cur = self.bands[i].load(Ordering::Relaxed);
             if cur != self.last_db[i] {
                 self.last_db[i] = cur;
-                self.filters[i].set_gain(Self::FREQS[i], cur as f64 / 100.0);
+                let coeffs = peaking_coeffs(EQ_FREQS[i], cur as f64 / 100.0);
+                self.filters[i][0].update_coefficients(coeffs);
+                self.filters[i][1].update_coefficients(coeffs);
             }
             if cur.abs() >= 5 { active = true; }
         }
@@ -236,8 +217,8 @@ impl Sink for EqSink {
                 for (idx, s) in samples.iter_mut().enumerate() {
                     let ch = idx & 1;
                     let mut v = *s;
-                    for (i, f) in self.filters.iter_mut().enumerate() {
-                        if self.last_db[i].abs() >= 5 { v = f.process(ch, v); }
+                    for (i, ch_pair) in self.filters.iter_mut().enumerate() {
+                        if self.last_db[i].abs() >= 5 { v = ch_pair[ch].run(v); }
                     }
                     *s = v.clamp(-1.0, 1.0);
                 }
@@ -254,7 +235,7 @@ struct App {
     prefs: Mutex<Prefs>,
     crossfade_ms: Arc<AtomicU32>,
     eq_enabled: Arc<AtomicBool>,
-    eq_bands: Arc<[AtomicI32; 5]>,
+    eq_bands: Arc<[AtomicI32; EQ_BANDS]>,
 }
 
 fn device_id() -> String {
@@ -889,6 +870,9 @@ async fn handle(app: &Arc<App>, msg: &Value) -> Result<Value> {
                 .filter_map(Value::as_str).map(String::from).collect();
             reads::artists(&engine(app).await?.session, &ids).await
         }
+        "track_credits" => {
+            reads::track_credits(&engine(app).await?.session, s(msg, "id")?).await
+        }
         // Canvas: el video corto en bucle que Spotify muestra detrás de la canción (MP4 sin cifrar).
         "canvas" => {
             let e = engine(app).await?;
@@ -909,7 +893,7 @@ async fn handle(app: &Arc<App>, msg: &Value) -> Result<Value> {
                 app.eq_enabled.store(en, Ordering::Relaxed);
             }
             if let Some(arr) = msg.get("eq_bands").and_then(Value::as_array) {
-                for (i, val) in arr.iter().take(5).enumerate() {
+                for (i, val) in arr.iter().take(EQ_BANDS).enumerate() {
                     if let Some(db) = val.as_f64() {
                         app.eq_bands[i].store((db.clamp(-12.0, 12.0) * 100.0).round() as i32, Ordering::Relaxed);
                     }
