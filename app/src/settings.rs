@@ -162,7 +162,9 @@ fn load_prefs(ui: &MainWindow) {
     ui.set_pref_tray(get("tray", true));
     ui.set_pref_wavy_scrubber(get("wavy_scrubber", false));
     ui.set_pref_bar_mode(get_i("bar_mode", 0).clamp(0, 2));
-    ui.set_pref_bar_color(get_i("bar_color", 0).clamp(0, slint::Model::row_count(&ui.get_bar_palette()) as i32 - 1));
+    let palette_max = slint::Model::row_count(&ui.get_bar_palette()) as i32 - 1;
+    ui.set_pref_bar_color(get_i("bar_color", 0).clamp(0, palette_max));
+    ui.set_pref_side_color(get_i("side_color", 0).clamp(0, palette_max));
     ui.set_pref_normalise(get("normalise", true));
     ui.set_pref_eq_enabled(get("eq_enabled", true));
     ui.set_pref_crossfade(get_f("crossfade_secs", 0.0));
@@ -201,6 +203,7 @@ fn save_prefs(ui: &MainWindow) {
         "wavy_scrubber": ui.get_pref_wavy_scrubber(),
         "bar_mode": ui.get_pref_bar_mode(),
         "bar_color": ui.get_pref_bar_color(),
+        "side_color": ui.get_pref_side_color(),
         "normalise": ui.get_pref_normalise(),
         "eq_enabled": ui.get_pref_eq_enabled(),
         "crossfade_secs": ui.get_pref_crossfade(),

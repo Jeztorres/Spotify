@@ -143,6 +143,7 @@ global Icons {
 
 component LibraryRow inherits Rectangle {
     in property <LibraryEntry> entry;
+    in property <color> accent: Theme.green-bright;
     callback clicked();
     callback context(length, length);
     height: 56px;
@@ -167,7 +168,7 @@ component LibraryRow inherits Rectangle {
                 font-size: 14px;
                 font-weight: 600;
                 overflow: elide;
-                color: root.entry.active ? Theme.green-bright : white;
+                color: root.entry.active ? root.accent : white;
             }
             Text {
                 text: (root.entry.pinned ? "📌 " : "") + root.entry.subtitle;
@@ -521,6 +522,31 @@ component FilterChip inherits Rectangle {
     background: root.selected ? white : (chip-touch.has-hover ? #ffffff30 : #ffffff18);
     chip-text := Text { text: root.label; color: root.selected ? black : white; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
     chip-touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Fila de círculos de color. El índice 0 es la opción "automática" (`first-fill` + `first-label`).
+component ColorSwatches inherits HorizontalLayout {
+    in property <[color]> palette;
+    in property <int> selected;
+    in property <brush> first-fill;
+    in property <string> first-label: "A";
+    in property <string> first-name;
+    callback picked(int);
+    spacing: 5px;
+    for c[i] in root.palette: Rectangle {
+        width: 22px; height: 22px; border-radius: 11px; clip: true;
+        background: i == 0 ? root.first-fill : c;
+        border-width: root.selected == i ? 2px : 1px;
+        border-color: root.selected == i ? white : (sw-ta.has-hover ? #ffffff80 : #ffffff26);
+        if i == 0: Text { text: root.first-label; color: white; font-size: 10px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; }
+        if root.selected == i && i > 0: Rectangle {
+            width: 7px; height: 7px; border-radius: 3.5px;
+            background: c.red * 0.299 + c.green * 0.587 + c.blue * 0.114 > 150 ? #121214 : white;
+        }
+        accessible-role: button;
+        accessible-label: i == 0 ? root.first-name : "Color " + i;
+        sw-ta := TouchArea { mouse-cursor: pointer; clicked => { root.picked(i); } }
+    }
 }
 
 component SettingGroup inherits VerticalLayout {
@@ -1200,7 +1226,7 @@ export component MainWindow inherits Window {
     in-out property <int> pref-bar-mode: 0;
     // Color: 0 = el de la portada; 1..N = color elegido de la paleta.
     in-out property <int> pref-bar-color: 0;
-    out property <[color]> bar-palette: [#00000000, #1ed760, #2e77d0, #8d67ab, #e8115b, #f59b23, #27856a, #509bf5, #e1118c, #ffffff];
+    out property <[color]> bar-palette: [#00000000, #1ed760, #2e77d0, #8d67ab, #e8115b, #f59b23, #27856a, #509bf5, #e1118c, #ffffff, #f9a8d4, #9d174d];
     property <bool> bar-custom: root.pref-bar-color > 0 && root.pref-bar-color < root.bar-palette.length;
     property <bool> bar-light: root.pref-bar-mode == 2;
     // Color base del reproductor (portada o elegido por el usuario).
@@ -1211,6 +1237,18 @@ export component MainWindow inherits Window {
             ? @linear-gradient(135deg, root.bar-accent.mix(#0e0e10, 0.30) 0%, root.bar-accent.mix(#0e0e10, 0.44) 55%, root.bar-accent.mix(#0e0e10, 0.58) 100%)
             : @linear-gradient(135deg, root.track-pill.darker(0.14) 0%, root.track-pill 48%, root.tint 100%))
         : @linear-gradient(135deg, root.bar-surface 0%, root.bar-accent.mix(root.bar-surface, root.bar-light ? 0.10 : 0.12) 55%, root.bar-accent.mix(root.bar-surface, root.bar-light ? 0.22 : 0.26) 100%);
+    // ---- Color de la barra lateral (Inicio, Buscar, Tu biblioteca) ----
+    // 0 = predeterminado (oscuro original); 1..N = color de `bar-palette`.
+    in-out property <int> pref-side-color: 0;
+    property <bool> side-custom: root.pref-side-color > 0 && root.pref-side-color < root.bar-palette.length;
+    property <color> side-base: root.side-custom ? root.bar-palette[root.pref-side-color] : Theme.green-bright;
+    property <float> side-lum: root.side-base.red * 0.299 + root.side-base.green * 0.587 + root.side-base.blue * 0.114;
+    property <brush> side-bg: root.side-custom
+        ? @linear-gradient(180deg, root.side-base.mix(#0b0c10, 0.34) 0%, root.side-base.mix(#0d0e13, 0.20) 35%, root.side-base.mix(#0e0f14, 0.12) 100%)
+        : @linear-gradient(180deg, #0b0c10b0 0%, #0d0e13eb 22%, #0e0f14f4 100%);
+    // Color de lo activo: aclarado si el color elegido es oscuro para que se lea sobre el fondo.
+    property <color> side-accent: !root.side-custom ? white : root.side-base.mix(#ffffff, root.side-lum < 90 ? 0.45 : (root.side-lum < 150 ? 0.7 : 0.9));
+    property <color> side-button-bg: root.side-custom ? root.side-base.mix(#16161a, 0.22) : #26262a;
     // Texto e iconos: legibles sobre el fondo y teñidos con el color del reproductor.
     property <color> bar-fg: root.bar-light ? #121214 : #ffffff;
     property <color> bar-fg-sub: root.bar-light ? #121214a8 : #ffffffb8;
@@ -1396,7 +1434,7 @@ export component MainWindow inherits Window {
 
         if root.sidebar-visible: Rectangle {
             width: root.sidebar-width;
-            background: @linear-gradient(180deg, #0b0c10b0 0%, #0d0e13eb 22%, #0e0f14f4 100%);
+            background: root.side-bg;
             Rectangle { x: parent.width - 1px; y: 0px; width: 1px; height: parent.height; background: #ffffff10; }
             VerticalLayout {
                 width: parent.width;
@@ -1414,8 +1452,8 @@ export component MainWindow inherits Window {
                         spacing: 8px; alignment: stretch;
                         LineEdit { horizontal-stretch: 1; preferred-height: 40px; placeholder-text: I18n.nav-search; text <=> root.search-text; edited(text) => { root.go(1); root.search-edited(text); } accepted => { root.search-remember(); } }
                     }
-                    NavItem { icon-d: Icons.home; title: I18n.nav-home; active: root.page == 0; clicked => { root.go(0); } }
-                    NavItem { icon-d: Icons.search; title: I18n.nav-search; active: root.page == 1; clicked => { root.go(1); } }
+                    NavItem { icon-d: Icons.home; title: I18n.nav-home; accent: root.side-accent; active: root.page == 0; clicked => { root.go(0); } }
+                    NavItem { icon-d: Icons.search; title: I18n.nav-search; accent: root.side-accent; active: root.page == 1; clicked => { root.go(1); } }
                 }
             }
 
@@ -1427,10 +1465,10 @@ export component MainWindow inherits Window {
                         padding: 14px;
                         padding-left: 16px;
                         spacing: 10px;
-                        IconPath { d: Icons.library; tint: Theme.sub; y: (parent.height - self.height) / 2; }
-                        Text { text: I18n.nav-library; font-size: 15px; font-weight: 700; color: Theme.sub; vertical-alignment: center; }
+                        IconPath { d: Icons.library; tint: root.side-custom ? root.side-accent : Theme.sub; y: (parent.height - self.height) / 2; }
+                        Text { text: I18n.nav-library; font-size: 15px; font-weight: 700; color: root.side-custom ? root.side-accent : Theme.sub; vertical-alignment: center; }
                         Rectangle { horizontal-stretch: 1; }
-                        RoundIconButton { d: Icons.plus; width: 28px; height: 28px; clicked => { root.new-playlist(); } }
+                        RoundIconButton { d: Icons.plus; width: 28px; height: 28px; bg-color: root.side-button-bg; active-color: root.side-accent; clicked => { root.new-playlist(); } }
                     }
                     ScrollView {
                         VerticalLayout {
@@ -1439,6 +1477,7 @@ export component MainWindow inherits Window {
                             spacing: 2px;
                             for entry[i] in root.library: LibraryRow {
                                 entry: entry;
+                                accent: root.side-custom ? root.side-accent : Theme.green-bright;
                                 clicked => { root.open-library(i); }
                                 context(x, y) => { root.menu-x = x; root.menu-y = y; root.library-context(i); }
                             }
@@ -1448,11 +1487,11 @@ export component MainWindow inherits Window {
                         padding: 12px; spacing: 6px;
                         Rectangle {
                             horizontal-stretch: 1; height: 40px; border-radius: 20px;
-                            background: me-touch.has-hover || root.page == 5 ? #ffffff14 : transparent;
+                            background: me-touch.has-hover || root.page == 5 ? (root.side-custom ? root.side-accent.with-alpha(0.14) : #ffffff14) : transparent;
                             HorizontalLayout {
                                 padding-left: 4px; padding-right: 10px; spacing: 10px;
                                 Rectangle {
-                                    width: 32px; height: 32px; y: (parent.height - self.height) / 2; border-radius: 16px; clip: true; background: Theme.green;
+                                    width: 32px; height: 32px; y: (parent.height - self.height) / 2; border-radius: 16px; clip: true; background: root.side-custom ? root.side-base : Theme.green;
                                     Text { text: "♪"; color: white; font-size: 14px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; }
                                     Image { width: 100%; height: 100%; source: root.my-profile-image; image-fit: cover; }
                                 }
@@ -1461,7 +1500,7 @@ export component MainWindow inherits Window {
                             accessible-role: button; accessible-label: "Ver perfil";
                             me-touch := TouchArea { clicked => { root.open-profile(); } }
                         }
-                        RoundIconButton { d: Icons.settings; label: I18n.settings-title; active: root.page == 4; width: 40px; height: 40px; clicked => { root.open-settings(); } }
+                        RoundIconButton { d: Icons.settings; label: I18n.settings-title; active: root.page == 4; width: 40px; height: 40px; bg-color: root.side-button-bg; active-color: root.side-accent; clicked => { root.open-settings(); } }
                     }
                 }
             }
@@ -2347,23 +2386,22 @@ export component MainWindow inherits Window {
                             SettingRow {
                                 title: root.pref-lang == "en" ? "Player color" : "Color del reproductor";
                                 detail: root.pref-lang == "en" ? "Tints icons, bars and background. «A» uses the cover color." : "Tiñe iconos, barras y fondo. «A» usa el color de la portada.";
+                                ColorSwatches {
+                                    palette: root.bar-palette; selected: root.pref-bar-color;
+                                    first-fill: root.track-accent.mix(root.track-pill, 0.6);
+                                    first-name: root.pref-lang == "en" ? "Cover color" : "Color de la portada";
+                                    picked(i) => { root.pref-bar-color = i; root.pref-changed(); }
+                                }
+                            }
+                            SettingRow {
+                                title: root.pref-lang == "en" ? "Sidebar color" : "Color de la barra lateral";
+                                detail: root.pref-lang == "en" ? "Home, Search and Your Library. «D» is the default dark look." : "Inicio, Buscar y Tu biblioteca. «D» es el oscuro predeterminado.";
                                 last: true;
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    for c[i] in root.bar-palette: Rectangle {
-                                        width: 26px; height: 26px; border-radius: 13px; clip: true;
-                                        background: i == 0 ? @linear-gradient(135deg, root.track-accent 0%, root.track-pill 100%) : c;
-                                        border-width: root.pref-bar-color == i ? 2px : 1px;
-                                        border-color: root.pref-bar-color == i ? white : (sw-ta.has-hover ? #ffffff80 : #ffffff26);
-                                        if i == 0: Text { text: "A"; color: white; font-size: 11px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; }
-                                        if root.pref-bar-color == i && i > 0: Rectangle {
-                                            width: 8px; height: 8px; border-radius: 4px;
-                                            background: c.red * 0.299 + c.green * 0.587 + c.blue * 0.114 > 150 ? #121214 : white;
-                                        }
-                                        accessible-role: button;
-                                        accessible-label: i == 0 ? (root.pref-lang == "en" ? "Cover color" : "Color de la portada") : (root.pref-lang == "en" ? "Color " : "Color ") + i;
-                                        sw-ta := TouchArea { mouse-cursor: pointer; clicked => { root.pref-bar-color = i; root.pref-changed(); } }
-                                    }
+                                ColorSwatches {
+                                    palette: root.bar-palette; selected: root.pref-side-color;
+                                    first-fill: #0e0f14; first-label: "D";
+                                    first-name: root.pref-lang == "en" ? "Default" : "Predeterminado";
+                                    picked(i) => { root.pref-side-color = i; root.pref-changed(); }
                                 }
                             }
                         }

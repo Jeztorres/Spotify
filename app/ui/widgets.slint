@@ -299,10 +299,12 @@ export component NavItem inherits Rectangle {
     in property <string> icon-d;
     in property <string> title;
     in property <bool> active;
+    // Color del elemento activo (personalizable desde Ajustes).
+    in property <color> accent: white;
     callback clicked();
     height: 40px;
     border-radius: 8px;
-    background: root.active ? #ffffff10 : (ta.has-hover ? #ffffff08 : transparent);
+    background: root.active ? root.accent.with-alpha(0.12) : (ta.has-hover ? #ffffff0a : transparent);
     HorizontalLayout {
         padding-left: 12px;
         padding-right: 12px;
@@ -310,7 +312,7 @@ export component NavItem inherits Rectangle {
         alignment: start;
         IconPath {
             d: root.icon-d;
-            tint: root.active || ta.has-hover ? white : Theme.sub;
+            tint: root.active ? root.accent : (ta.has-hover ? white : Theme.sub);
             y: (parent.height - self.height) / 2;
             width: 22px;
             height: 22px;
@@ -319,7 +321,7 @@ export component NavItem inherits Rectangle {
             text: root.title;
             font-size: 15px;
             font-weight: 700;
-            color: root.active || ta.has-hover ? white : Theme.sub;
+            color: root.active ? root.accent : (ta.has-hover ? white : Theme.sub);
             vertical-alignment: center;
         }
     }
