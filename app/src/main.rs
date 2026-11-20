@@ -1153,6 +1153,10 @@ fn render_player(ui: &MainWindow, app: &mut App) {
             app.timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
                 tick = tick.wrapping_add(1);
                 with_app(|ui, app| {
+                    // Cada ~2 s: el modo infinito comprueba si la canción está por acabar sin nada detrás.
+                    if tick % 40 == 0 {
+                        queue_ui::maybe_fill_infinite(ui, app);
+                    }
                     if ui.get_pref_battery_saver() {
                         use slint::winit_030::WinitWindowAccessor;
                         let minimized = ui
@@ -1742,6 +1746,22 @@ pub(crate) fn close_now_playing_view(ui: &MainWindow, app: &mut App, restore_pag
 
 fn main() -> Result<(), slint::PlatformError> {
     updater::cleanup_old_binaries();
+    // macOS: barra de título transparente integrada con el contenido (estilo apps nativas);
+    // los botones de semáforo siempre visibles salvo en pantalla completa.
+    #[cfg(target_os = "macos")]
+    {
+        use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
+        let _ = slint::BackendSelector::new()
+            .backend_name("winit".into())
+            .with_winit_window_attributes_hook(|attrs| {
+                attrs
+                    .with_decorations(true)
+                    .with_titlebar_transparent(true)
+                    .with_title_hidden(true)
+                    .with_fullsize_content_view(true)
+            })
+            .select();
+    }
     #[cfg(windows)]
     let _timer_period = WinTimerPeriod::acquire();
     let ui = MainWindow::new()?;

@@ -161,7 +161,7 @@ fn enqueue_silent(app: &App, uri: &str) {
 /// Al iniciar una playlist, álbum o «Canciones que te gustan», limpia las pistas que añadió
 /// automáticamente el modo infinito para que no se mezclen antes del nuevo contexto.
 pub fn clear_autoplay_on_play(app: &mut App) {
-    app.queue.context_switch_until = Some(Instant::now() + Duration::from_secs(4));
+    app.queue.context_switch_until = Some(Instant::now() + Duration::from_secs(8));
     if app.queue.autoplay_queued.is_empty() {
         return;
     }
@@ -180,6 +180,9 @@ pub fn clear_autoplay_on_play(app: &mut App) {
         }
     }
 }
+
+/// Margen antes del final de la canción en el que el modo infinito puede añadir recomendaciones.
+const INFINITE_FILL_WINDOW_MS: i64 = 25_000;
 
 /// Si la cola está por acabarse y el modo infinito está activo, añade recomendaciones basadas en lo que suena.
 pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
@@ -209,6 +212,14 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
     }
     let upcoming = if solo_only(app) { app.queue.solo.len() } else { app.queue.items.len() };
     if upcoming > 0 {
+        return;
+    }
+    // Como en Spotify: la playlist/álbum se escucha completo y solo al final continúan las
+    // recomendaciones. Antes se rellenaba en cuanto la cola se veía vacía (p. ej. mientras cargaba
+    // una playlist nueva) y se colaban canciones ajenas delante de las de la playlist.
+    // Solo se rellena en los últimos segundos de la canción y si Spotify no trajo su propio autoplay.
+    let remaining = current.duration_ms as i64 - app.player.position();
+    if current.duration_ms > 0 && remaining > INFINITE_FILL_WINDOW_MS {
         return;
     }
     if app.queue.autoplay_last_empty_seed.as_deref() == Some(current.uri.as_str()) {
