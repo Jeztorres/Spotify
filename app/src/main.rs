@@ -881,6 +881,9 @@ struct App {
     loader: Arc<Loader>,
     player: Player,
     playlists: Vec<Playlist>,
+    /// «Tu biblioteca»: álbumes guardados y artistas seguidos (para los filtros).
+    lib_albums: Vec<Playlist>,
+    lib_artists: Vec<spotify_core::ArtistItem>,
     library: Rc<VecModel<LibraryEntry>>,
     cards: Rc<VecModel<CardEntry>>,
     card_targets: Vec<Target>,
@@ -1221,6 +1224,30 @@ fn apply_state(ui: &MainWindow, app: &mut App, s: EngineState) {
 // ---------- Biblioteca e inicio ----------
 
 fn load_library(engine: Arc<Engine>) {
+    // Álbumes guardados y artistas seguidos, en paralelo a las playlists.
+    let collection_engine = engine.clone();
+    std::thread::spawn(move || match collection_engine.call("library_collection", json!({}), Duration::from_secs(60)) {
+        Ok(v) => {
+            let parse = |key: &str| v.get(key).cloned().unwrap_or(json!([]));
+            let albums: Vec<serde_json::Value> = serde_json::from_value(parse("albums")).unwrap_or_default();
+            let albums: Vec<Playlist> = albums.iter().filter_map(|a| {
+                let id = a.get("id")?.as_str()?;
+                let mut p = Playlist::new(id, a.get("uri")?.as_str()?, a.get("name")?.as_str()?);
+                p.images = serde_json::from_value(a.get("images").cloned().unwrap_or(json!([]))).ok();
+                let first = a.get("artists").and_then(|x| x.get(0));
+                p.artist_name = first.and_then(|x| x.get("name")).and_then(|x| x.as_str()).map(str::to_owned);
+                p.artist_id = first.and_then(|x| x.get("id")).and_then(|x| x.as_str()).map(str::to_owned);
+                Some(p)
+            }).collect();
+            let artists: Vec<spotify_core::ArtistItem> = serde_json::from_value(parse("artists")).unwrap_or_default();
+            on_ui(move |_ui, app| {
+                app.lib_albums = albums;
+                app.lib_artists = artists;
+                browse::rebuild_library(app);
+            });
+        }
+        Err(e) => log(&format!("biblioteca (álbumes/artistas) falló: {e}")),
+    });
     std::thread::spawn(move || match engine.call("rootlist", json!({}), Duration::from_secs(60)) {
         Ok(v) => match serde_json::from_value::<Page<Option<Playlist>>>(v) {
             Ok(page) => {
@@ -1814,6 +1841,8 @@ fn main() -> Result<(), slint::PlatformError> {
             loader: Arc::new(Loader::new(8)),
             player: Player { track: None, playing: false, position_ms: 0, anchor: Instant::now() },
             playlists: Vec::new(),
+            lib_albums: Vec::new(),
+            lib_artists: Vec::new(),
             library,
             cards,
             card_targets: Vec::new(),
