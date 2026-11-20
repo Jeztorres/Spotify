@@ -2055,7 +2055,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // Conexión: con credencial guardada se reconecta sola; si no, se pide iniciar sesión.
     with_app(|ui, app| {
         if engine::find_binary().is_none() {
-            return set_login(ui, "error", "No se encontró spotifymac-engine.exe junto a la app.");
+            return set_login(ui, "error", "No se encontró el motor de reproducción. Descarga la última versión de SpotifyMac.");
         }
         match ensure_engine(app) {
             Ok(_) => connect_saved(ui, app),

@@ -21,8 +21,8 @@ Elige tu sistema operativo para descargar el instalador más reciente desde [Git
 | Plataforma | Descarga directa | Notas |
 | :--- | :--- | :--- |
 | **macOS** *(Apple Silicon / Intel)* | [**Descargar `SpotifyMac-macOS.dmg`**](https://github.com/Jeztorres/Spotify/releases/latest/download/SpotifyMac-macOS.dmg) | Abre el `.dmg` y arrastra `SpotifyMac.app` a **Aplicaciones**. |
-| **Windows** *(64-bit, paquete completo)* | [**Descargar `SpotifyMac-Windows.zip`**](https://github.com/Jeztorres/Spotify/releases/latest/download/SpotifyMac-Windows.zip) | Incluye `spotify-win.exe` + `spotifymac-engine.exe`. Descomprime y abre `spotify-win.exe`. |
-| **Windows** *(solo ejecutable)* | [**Descargar `spotify-win.exe`**](https://github.com/Jeztorres/Spotify/releases/latest/download/spotify-win.exe) | Requiere tener `spotifymac-engine.exe` junto al ejecutable. |
+| **Windows** *(64-bit, paquete completo)* | [**Descargar `SpotifyMac-Windows.zip`**](https://github.com/Jeztorres/Spotify/releases/latest/download/SpotifyMac-Windows.zip) | Incluye `spotify-win.exe` y `media/ffmpeg.exe` (portadas animadas). Descomprime y abre `spotify-win.exe`. |
+| **Windows** *(solo ejecutable)* | [**Descargar `spotify-win.exe`**](https://github.com/Jeztorres/Spotify/releases/latest/download/spotify-win.exe) | Autónomo: el motor de reproducción viene incrustado. Puedes moverlo a cualquier carpeta o crear un acceso directo. |
 
 > Si acabas de hacer `push`, espera ~5 minutos a que termine el workflow [**Release (Windows & macOS)**](https://github.com/Jeztorres/Spotify/actions/workflows/release.yml) para que los enlaces directos queden activos.
 
