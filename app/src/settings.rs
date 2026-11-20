@@ -160,6 +160,7 @@ fn load_prefs(ui: &MainWindow) {
     ui.set_sidebar_visible(get("sidebar", true));
     ui.set_show_translation(get("translate_lyrics", false));
     ui.set_pref_tray(get("tray", true));
+    ui.set_pref_wavy_scrubber(get("wavy_scrubber", false));
     ui.set_pref_normalise(get("normalise", true));
     ui.set_pref_eq_enabled(get("eq_enabled", true));
     ui.set_pref_crossfade(get_f("crossfade_secs", 0.0));
@@ -195,6 +196,7 @@ fn save_prefs(ui: &MainWindow) {
         "sidebar": sidebar,
         "translate_lyrics": ui.get_show_translation(),
         "tray": ui.get_pref_tray(),
+        "wavy_scrubber": ui.get_pref_wavy_scrubber(),
         "normalise": ui.get_pref_normalise(),
         "eq_enabled": ui.get_pref_eq_enabled(),
         "crossfade_secs": ui.get_pref_crossfade(),
@@ -579,7 +581,13 @@ fn apply_profile(ui: &MainWindow, app: &mut App, reply: Result<Value, String>, m
                     let [pr, pg, pb] = color::pill(c);
                     ui.set_profile_pill(slint::Color::from_rgb_u8(pr, pg, pb));
                 }
-                ui.set_profile_image(to_image(d));
+                let img = to_image(d);
+                if is_me {
+                    ui.set_my_profile_image(img.clone());
+                }
+                if app.settings.visit == visit {
+                    ui.set_profile_image(img);
+                }
             }
         });
     }
@@ -664,6 +672,7 @@ fn sign_out(ui: &MainWindow, app: &mut App) {
     ui.set_can_go_forward(false);
     ui.set_page(0);
     ui.set_profile_name("".into());
+    ui.set_my_profile_image(Image::default());
     ui.set_profile_image(Image::default());
     ui.set_profile_tint(slint::Color::from_rgb_u8(40, 44, 60));
     ui.set_profile_pill(slint::Color::from_rgb_u8(52, 57, 78));

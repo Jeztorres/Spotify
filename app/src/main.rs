@@ -920,6 +920,8 @@ struct App {
     /// Este equipo no obtiene audio de librespot: se reproduce con Soloist (se recuerda entre sesiones).
     prefer_soloist: bool,
     last_play: Option<PlayReq>,
+    shuffle: bool,
+    repeat_engine: &'static str,
     replay_when_ready: bool,
     last_key_fallback: Option<Instant>,
     /// El usuario está configurando Soloist: el asistente se abre y se cierra solo.
@@ -1494,6 +1496,7 @@ fn ctl(app: &App, c: Ctl) {
 }
 
 fn play_req(app: &mut App, req: PlayReq) {
+    queue_ui::clear_autoplay_on_play(app);
     app.last_play = Some(req.clone());
     app.pending_track=None;
     let epoch=app.play_epoch.fetch_add(1,std::sync::atomic::Ordering::SeqCst)+1;
@@ -1542,10 +1545,10 @@ fn play_req(app: &mut App, req: PlayReq) {
         }
     } else if let Some(e) = &app.engine {
         match &req {
-            PlayReq::Context { uri, start: Some(start), .. } => e.fire("play_context", json!({"uri": uri, "start_uri": start})),
-            PlayReq::Context { uri, .. } => e.fire("play_context", json!({"uri": uri})),
-            PlayReq::Track(uri) => e.fire("play_tracks", json!({"uris": [uri]})),
-            PlayReq::Tracks { uris, start } => e.fire("play_tracks", json!({"uris": uris, "start_uri": start})),
+            PlayReq::Context { uri, start: Some(start), .. } => e.fire("play_context", json!({"uri": uri, "start_uri": start, "shuffle": app.shuffle, "repeat": app.repeat_engine})),
+            PlayReq::Context { uri, .. } => e.fire("play_context", json!({"uri": uri, "shuffle": app.shuffle, "repeat": app.repeat_engine})),
+            PlayReq::Track(uri) => e.fire("play_tracks", json!({"uris": [uri], "shuffle": app.shuffle, "repeat": app.repeat_engine})),
+            PlayReq::Tracks { uris, start } => e.fire("play_tracks", json!({"uris": uris, "start_uri": start, "shuffle": app.shuffle, "repeat": app.repeat_engine})),
         }
     }
 }
@@ -1811,6 +1814,8 @@ fn main() -> Result<(), slint::PlatformError> {
             solo_active: false,
             prefer_soloist: prefer_flag_path().is_file(),
             last_play: None,
+            shuffle: false,
+            repeat_engine: "off",
             replay_when_ready: false,
             last_key_fallback: None,
             history: Vec::new(),
@@ -2010,6 +2015,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_toggle_shuffle(|| {
         with_app(|ui, app| {
             let on = !ui.get_shuffle();
+            app.shuffle = on;
             ui.set_shuffle(on);
             ctl(app, Ctl::Shuffle(on));
         });
@@ -2021,6 +2027,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "all" => ("one", "track"),
                 _ => ("off", "off"),
             };
+            app.repeat_engine = engine_mode;
             ui.set_repeat_mode(ui_mode.into());
             ctl(app, Ctl::Repeat(engine_mode));
         });

@@ -14,6 +14,8 @@ pub struct QueueState {
     autoplay_inflight: bool,
     autoplay_history: Vec<String>,
     autoplay_last_empty_seed: Option<String>,
+    autoplay_queued: std::collections::HashSet<String>,
+    context_switch_until: Option<Instant>,
 }
 
 impl QueueState {
@@ -26,6 +28,8 @@ impl QueueState {
             autoplay_inflight: false,
             autoplay_history: vec![],
             autoplay_last_empty_seed: None,
+            autoplay_queued: std::collections::HashSet::new(),
+            context_switch_until: None,
         }
     }
 }
@@ -154,9 +158,39 @@ fn enqueue_silent(app: &App, uri: &str) {
     }
 }
 
+/// Al iniciar una playlist, álbum o «Canciones que te gustan», limpia las pistas que añadió
+/// automáticamente el modo infinito para que no se mezclen antes del nuevo contexto.
+pub fn clear_autoplay_on_play(app: &mut App) {
+    app.queue.context_switch_until = Some(Instant::now() + Duration::from_secs(4));
+    if app.queue.autoplay_queued.is_empty() {
+        return;
+    }
+    let before = app.queue.items.len();
+    app.queue
+        .items
+        .retain(|item| !(item.queued && app.queue.autoplay_queued.contains(&item.track.uri)));
+    app.queue.autoplay_queued.clear();
+    if app.queue.items.len() != before {
+        if let Some(e) = &app.engine {
+            let mut args = json!({"uids": q::uids(&app.queue.items)});
+            if let Some(to) = target(app) {
+                args["to"] = json!(to);
+            }
+            e.fire("queue_set", args);
+        }
+    }
+}
+
 /// Si la cola está por acabarse y el modo infinito está activo, añade recomendaciones basadas en lo que suena.
 pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
     if !ui.get_infinite_queue() || ui.get_repeat_mode() == "one" || app.queue.autoplay_inflight {
+        return;
+    }
+    if app
+        .queue
+        .context_switch_until
+        .is_some_and(|until| Instant::now() < until)
+    {
         return;
     }
     let Some(current) = app.player.track.clone() else {
@@ -174,7 +208,7 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
         app.queue.autoplay_last_empty_seed = None;
     }
     let upcoming = if solo_only(app) { app.queue.solo.len() } else { app.queue.items.len() };
-    if upcoming > 2 {
+    if upcoming > 0 {
         return;
     }
     if app.queue.autoplay_last_empty_seed.as_deref() == Some(current.uri.as_str()) {
@@ -245,6 +279,7 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
             }
             for t in picked {
                 app.queue.autoplay_history.push(t.uri.clone());
+                app.queue.autoplay_queued.insert(t.uri.clone());
                 enqueue_silent(app, &t.uri);
             }
             if app.queue.autoplay_history.len() > 60 {
