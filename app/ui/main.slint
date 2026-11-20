@@ -2147,9 +2147,16 @@ export component MainWindow inherits Window {
             if root.page == 4: ScrollView {
                 x: 0; y: 0; width: parent.width; height: parent.height;
                 HorizontalLayout {
-                    padding: 28px; padding-top: 72px; padding-bottom: 24px; alignment: start;
+                    padding-left: root.width < 900px ? 16px : 28px;
+                    padding-right: root.width < 900px ? 16px : 28px;
+                    padding-top: 72px;
+                    padding-bottom: 24px;
+                    alignment: center;
                     VerticalLayout {
-                        horizontal-stretch: 1; max-width: 820px; spacing: 26px; alignment: start;
+                        horizontal-stretch: 1;
+                        max-width: 820px;
+                        spacing: 26px;
+                        alignment: start;
                         VerticalLayout {
                             spacing: 4px;
                             Text { text: I18n.settings-title; color: white; font-family: Theme.display-font; font-size: 34px; font-weight: 900; letter-spacing: -1px; horizontal-alignment: left; }
