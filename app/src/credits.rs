@@ -1,4 +1,4 @@
-//! Créditos de MusicBrainz, con coincidencia estricta de canción/álbum/artista como en Swift.
+//! Créditos de canciones: Spotify (Engine) -> Credits.fm -> MusicBrainz.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, OnceLock};
@@ -226,6 +226,191 @@ pub fn load_with_engine(track: &Track, engine: Option<&crate::engine::Engine>) -
     load(track)
 }
 
+fn title_case_if_upper(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.is_empty()
+        || !trimmed.chars().any(|c| c.is_alphabetic())
+        || trimmed.chars().any(|c| c.is_lowercase())
+    {
+        return trimmed.to_owned();
+    }
+    let mut out = String::with_capacity(trimmed.len());
+    let mut cap_next = true;
+    for ch in trimmed.chars() {
+        if cap_next && ch.is_alphabetic() {
+            out.extend(ch.to_uppercase());
+            cap_next = false;
+        } else {
+            out.extend(ch.to_lowercase());
+            cap_next = ch.is_whitespace() || ch == '-' || ch == '\'';
+        }
+    }
+    out
+}
+
+fn credits_fm_role(role: &str) -> &str {
+    match role.trim().to_ascii_lowercase().as_str() {
+        "composer" => "Composición",
+        "lyricist" | "author" => "Letra",
+        "composer/lyricist" | "writer" | "songwriter" | "" => "Composición y letra",
+        "producer" => "Producción",
+        "executive producer" => "Producción ejecutiva",
+        "co-producer" => "Coproducción",
+        "arranger" => "Arreglos",
+        "adapter" => "Adaptación",
+        "translator" => "Traducción",
+        "performer" | "main artist" | "primary artist" => "Interpretación",
+        "featured artist" | "featuring" => "Artista invitado",
+        _ => role.trim(),
+    }
+}
+
+fn matching_credits_fm_isrcs(track: &Track, search: &Value) -> Vec<String> {
+    let Some(items) = search.pointer("/recordings/items").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let target_title = normalize(&track.name);
+    let target_artists: Vec<String> = track.artists.iter().map(|a| normalize(&a.name)).collect();
+    let mut out = Vec::new();
+    for item in items {
+        let Some(title) = item.get("title").and_then(Value::as_str) else {
+            continue;
+        };
+        if normalize(title) != target_title {
+            continue;
+        }
+        let Some(artists) = item.get("artist_names").and_then(Value::as_array) else {
+            continue;
+        };
+        let artist_match = artists.iter().filter_map(Value::as_str).any(|a| {
+            let norm = normalize(a);
+            target_artists.iter().any(|t| *t == norm)
+        });
+        if !artist_match {
+            continue;
+        }
+        if let Some(isrc) = item.get("isrc").and_then(Value::as_str) {
+            if isrc.len() >= 10
+                && isrc.bytes().all(|b| b.is_ascii_alphanumeric())
+                && !out.iter().any(|existing| existing == isrc)
+            {
+                out.push(isrc.to_owned());
+            }
+        }
+    }
+    out
+}
+
+fn format_credits_fm(detail: &Value) -> Option<String> {
+    let mut grouped: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut publishers: BTreeSet<String> = BTreeSet::new();
+    let mut has_songwriters = false;
+
+    for sw in detail
+        .get("songwriters")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(raw_name) = sw.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let name = title_case_if_upper(raw_name);
+        if name.is_empty() {
+            continue;
+        }
+        has_songwriters = true;
+        let role_raw = sw.get("role").and_then(Value::as_str).unwrap_or("");
+        let role_label = credits_fm_role(role_raw);
+        grouped.entry(role_label.into()).or_default().insert(name);
+        for pub_item in sw
+            .get("publishers")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let pub_name = pub_item
+                .as_str()
+                .or_else(|| pub_item.get("name").and_then(Value::as_str));
+            if let Some(p) = pub_name.map(title_case_if_upper).filter(|s| !s.is_empty()) {
+                publishers.insert(p);
+            }
+        }
+    }
+
+    if !has_songwriters {
+        return None;
+    }
+
+    for perf in detail
+        .get("performers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(raw_name) = perf.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let name = title_case_if_upper(raw_name);
+        if name.is_empty() {
+            continue;
+        }
+        let role_raw = perf
+            .get("role")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| perf.get("credit_type").and_then(Value::as_str))
+            .unwrap_or("performer");
+        let role_label = credits_fm_role(role_raw);
+        grouped.entry(role_label.into()).or_default().insert(name);
+    }
+
+    if !publishers.is_empty() {
+        grouped.insert("Editoriales".into(), publishers);
+    }
+
+    if grouped.is_empty() {
+        return None;
+    }
+
+    let body = grouped
+        .into_iter()
+        .map(|(role, people)| {
+            format!(
+                "{role}\n{}",
+                people.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    Some(format!("{body}\n\nFuente: Credits.fm"))
+}
+
+fn credits_fm_get(path: &str, query: &[(&str, &str)]) -> Result<Value, String> {
+    let mut request = ureq::get(&format!("https://api.credits.fm/v1/{path}"))
+        .timeout(Duration::from_secs(12))
+        .set("User-Agent", "SpotifyMac-Windows/0.1 (desktop music player)");
+    for (key, value) in query {
+        request = request.query(key, value);
+    }
+    let response = request.call().map_err(|e| e.to_string())?;
+    serde_json::from_reader(response.into_reader()).map_err(|e| e.to_string())
+}
+
+fn load_credits_fm(track: &Track) -> Option<(String, String)> {
+    let artist = track.artists.first()?;
+    let q = format!("{} {}", track.name, artist.name).to_lowercase();
+    let search = credits_fm_get("search", &[("q", &q)]).ok()?;
+    for isrc in matching_credits_fm_isrcs(track, &search).into_iter().take(3) {
+        if let Ok(detail) = credits_fm_get(&format!("isrc/{isrc}"), &[]) {
+            if let Some(text) = format_credits_fm(&detail) {
+                return Some((text, format!("https://credits.fm/isrc/{isrc}")));
+            }
+        }
+    }
+    None
+}
+
 pub fn load(track: &Track) -> Result<(String, String), String> {
     let Some(artist) = track.artists.first() else {
         return Ok((
@@ -233,6 +418,9 @@ pub fn load(track: &Track) -> Result<(String, String), String> {
             String::new(),
         ));
     };
+    if let Some(hit) = load_credits_fm(track) {
+        return Ok(hit);
+    }
     let Some(album) = track.album.as_ref() else {
         return Ok((
             "No hay datos suficientes para buscar los créditos.".into(),
@@ -248,7 +436,7 @@ pub fn load(track: &Track) -> Result<(String, String), String> {
     );
     let search = get("recording/", &[("query", &query), ("limit", "25")])?;
     let Some(id) = matching_id(track, &search) else {
-        return Ok(("No se encontró una coincidencia exacta en MusicBrainz para esta versión de la canción.".into(), String::new()));
+        return Ok(("No se encontró una coincidencia exacta para esta canción en Credits.fm ni en MusicBrainz.".into(), String::new()));
     };
     let detail = get(
         &format!("recording/{id}"),
@@ -257,7 +445,7 @@ pub fn load(track: &Track) -> Result<(String, String), String> {
     let text = format_detail(&detail);
     Ok((
         if text.is_empty() {
-            "La grabación existe, pero MusicBrainz todavía no tiene créditos detallados.".into()
+            "La grabación existe, pero todavía no tiene créditos detallados en Credits.fm ni en MusicBrainz.".into()
         } else {
             format!("{text}\n\nFuente: MusicBrainz")
         },
@@ -279,5 +467,44 @@ mod tests {
         assert!(matching_id(&track, &json!({"recordings":[hit]})).is_some());
         let detail = json!({"relations":[{"type":"producer","artist":{"name":"A"}},{"type":"producer","artist":{"name":"A"}},{"work":{"relations":[{"type":"composer","artist":{"name":"B"}}]}}]});
         assert_eq!(format_detail(&detail), "Composición\nB\n\nProducción\nA");
+    }
+
+    #[test]
+    fn credits_fm_matches_isrc_and_formats_songwriters_and_performers() {
+        let track: Track = serde_json::from_value(json!({
+            "uri": "spotify:track:a",
+            "name": "Hipnotízame",
+            "artists": [{"name": "Wisin & Yandel"}],
+            "album": {"name": "Líderes"},
+            "duration_ms": 220000
+        }))
+        .unwrap();
+        let search = json!({
+            "recordings": {
+                "items": [
+                    {"isrc": "XX0000000001", "title": "Hipnotízame", "artist_names": ["Otro Artista"]},
+                    {"isrc": "USUM71206368", "title": "Hipnotízame", "artist_names": ["Wisin & Yandel"]}
+                ]
+            }
+        });
+        assert_eq!(
+            matching_credits_fm_isrcs(&track, &search),
+            vec!["USUM71206368".to_string()]
+        );
+
+        let detail = json!({
+            "songwriters": [
+                {"name": "MARCOS EFRAIN MASIS", "role": "Composer", "publishers": []},
+                {"name": "JUAN LUIS MORERA LUNA", "role": "Composer", "publishers": ["Sony Music"]}
+            ],
+            "performers": [
+                {"name": "Wisin & Yandel", "role": "performer"}
+            ]
+        });
+        let formatted = format_credits_fm(&detail).unwrap();
+        assert!(formatted.contains("Composición\nJuan Luis Morera Luna, Marcos Efrain Masis"));
+        assert!(formatted.contains("Interpretación\nWisin & Yandel"));
+        assert!(formatted.contains("Editoriales\nSony Music"));
+        assert!(formatted.ends_with("Fuente: Credits.fm"));
     }
 }
