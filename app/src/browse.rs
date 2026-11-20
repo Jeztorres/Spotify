@@ -160,6 +160,12 @@ pub fn rebuild_library(app: &mut App) {
         cover: covers.get(&p.uri).cloned().unwrap_or_default(), pinned: pinned(&p.uri),
         active: false, special: false, kind: "album".into(),
     }));
+    entries.extend(app.lib_shows.iter().map(|p| LibraryEntry {
+        uri: p.uri.clone().into(), title: p.name.clone().into(),
+        subtitle: p.owner.as_ref().and_then(|o| o.display_name.clone()).unwrap_or_else(|| "Podcast".into()).into(),
+        cover: covers.get(&p.uri).cloned().unwrap_or_default(), pinned: pinned(&p.uri),
+        active: false, special: false, kind: "show".into(),
+    }));
     entries.extend(app.lib_artists.iter().map(|a| LibraryEntry {
         uri: a.uri.clone().into(), title: a.name.clone().into(), subtitle: "Artista".into(),
         cover: covers.get(&a.uri).cloned().unwrap_or_default(), pinned: pinned(&a.uri),
@@ -170,7 +176,7 @@ pub fn rebuild_library(app: &mut App) {
     highlight_library(app, None);
     let mut jobs: Vec<(String, String, bool)> = app.playlists.iter()
         .filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))).collect();
-    jobs.extend(app.lib_albums.iter().filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))));
+    jobs.extend(app.lib_albums.iter().chain(app.lib_shows.iter()).filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))));
     jobs.extend(app.lib_artists.iter().filter_map(|a| {
         a.images.as_ref().and_then(|i| i.first()).map(|i| (a.uri.clone(), i.url.clone(), true))
     }));
@@ -259,6 +265,7 @@ pub fn open_library_row(ui:&MainWindow,app:&mut App,row:usize){
     let Some(entry)=app.library.row_data(row)else{return;};
     if entry.special{open_source(ui,app,Source::Liked);}
     else if entry.kind=="album"{if let Some(p)=app.lib_albums.iter().find(|p|p.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::Playlist(p));}}
+    else if entry.kind=="show"{if let Some(p)=app.lib_shows.iter().find(|p|p.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::Playlist(p));}}
     else if entry.kind=="artist"{if let Some(a)=app.lib_artists.iter().find(|a|a.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::ArtistTop(ArtistItem::new(&a.id,&a.name)));}}
     else if let Some(p)=app.playlists.iter().find(|p|p.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::Playlist(p));}
 }
@@ -396,6 +403,7 @@ pub fn open_source(ui: &MainWindow, app: &mut App, src: Source) {
     };
     let (kind, description, image) = match &src {
         Source::Liked => ("PLAYLIST", "Tus canciones favoritas en un solo lugar".to_owned(), None),
+        Source::Playlist(p) if p.uri.starts_with("spotify:show:") => ("PODCAST", [p.owner.as_ref().and_then(|o| o.display_name.clone()).unwrap_or_default().trim_start_matches("Podcast · ").to_owned(), p.plain_description().unwrap_or_default()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · "), p.image_url().map(str::to_owned)),
         Source::Playlist(p) => ("PLAYLIST", [p.owner.as_ref().and_then(|o| o.display_name.clone()).or(p.creator_display_name.clone()).unwrap_or_default(), p.plain_description().unwrap_or_default()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · "), p.image_url().map(str::to_owned)),
         Source::Album(a) => ("ÁLBUM", spotify_core::catalog::primary_artist(a.artists.as_deref().unwrap_or_default()), a.image_url().map(str::to_owned)),
         Source::ArtistTop(a) => ("ARTISTA", "Canciones populares".to_owned(), a.image_url().map(str::to_owned)),
@@ -646,6 +654,22 @@ pub fn open_source(ui: &MainWindow, app: &mut App, src: Source) {
             result
         };
         match src {
+            Source::Playlist(p) if p.uri.starts_with("spotify:show:") => {
+                let (mut all, mut offset) = (Vec::<Track>::new(), 0usize);
+                loop {
+                    let page = call("show_episodes", json!({"target": p.id, "offset": offset, "limit": 50}))
+                        .and_then(|v| serde_json::from_value::<Page<PlaylistItem>>(v).map_err(|e| e.to_string()));
+                    let Ok(page) = page else { return log("show_episodes falló") };
+                    let n = page.items.len();
+                    all.extend(page.items.iter().filter_map(|i| i.resolved().cloned()));
+                    publish(all.clone());
+                    offset += n;
+                    // Los programas pueden tener cientos de episodios: se cargan los 200 más recientes.
+                    if n < 50 || offset >= 200 {
+                        break;
+                    }
+                }
+            }
             Source::Playlist(p) => {
                 let (mut all, mut offset) = (Vec::<Track>::new(), 0usize);
                 loop {
@@ -830,7 +854,7 @@ fn run_search(app: &mut App, q: String, gen: u64) {
     let Some(engine) = app.engine.clone() else { return };
     std::thread::spawn(move || {
         let reply = engine
-            .call("search", json!({"q": q, "types": "track,artist,album,playlist", "limit": SEARCH_PAGE, "offset": 0}), Duration::from_secs(30))
+            .call("search", json!({"q": q, "types": "track,artist,album,playlist,show", "limit": SEARCH_PAGE, "offset": 0}), Duration::from_secs(30))
             .and_then(|v| serde_json::from_value::<SearchResponse>(v).map_err(|e| e.to_string()));
         match reply {
             Ok(r) => {
@@ -838,7 +862,11 @@ fn run_search(app: &mut App, q: String, gen: u64) {
                     tracks: r.tracks.map(|p| p.items.into_iter().flatten().collect()).unwrap_or_default(),
                     artists: r.artists.map(|p| p.items.into_iter().flatten().collect()).unwrap_or_default(),
                     albums: r.albums.map(|p| p.items.into_iter().flatten().collect()).unwrap_or_default(),
-                    playlists: r.playlists.map(|p| p.items.into_iter().flatten().collect()).unwrap_or_default(),
+                    // Playlists y, detrás, podcasts (se abren igual, como una lista de episodios).
+                    playlists: r.playlists.map(|p| p.items.into_iter().flatten().collect::<Vec<_>>()).unwrap_or_default()
+                        .into_iter()
+                        .chain(r.shows.map(|p| p.items.into_iter().flatten().collect::<Vec<_>>()).unwrap_or_default().into_iter().take(8))
+                        .collect(),
                 };
                 on_ui(move |ui, app| {
                     if app.search.gen == gen {

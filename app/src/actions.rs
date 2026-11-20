@@ -286,6 +286,15 @@ fn open_album(ui: &MainWindow, app: &mut App, track: &Track) {
     let Some(a) = track.album.as_ref() else {
         return;
     };
+    // Episodio de podcast: su «álbum» es el programa.
+    if let Some(show_uri) = a.uri.as_deref().filter(|u| u.starts_with("spotify:show:")) {
+        let id = show_uri.trim_start_matches("spotify:show:");
+        let mut p = Playlist::new(id, show_uri, &a.name);
+        p.images = a.images.clone();
+        crate::close_now_playing_view(ui, app, false);
+        browse::open_source(ui, app, browse::Source::Playlist(p));
+        return;
+    }
     let Some(id) = a.id.clone().or_else(|| {
         a.uri
             .as_ref()

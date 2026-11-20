@@ -13,6 +13,7 @@ mod catalog;
 mod knowledge;
 mod lyrics;
 mod media;
+mod notify;
 mod native;
 mod engine;
 mod images;
@@ -379,6 +380,30 @@ mod media_keys {
             SMTC.with(|cell| {
                 *cell.borrow_mut() = Some(controls);
             });
+        }
+    }
+
+    /// Aviso de Windows (globo/notificación del icono de la bandeja) con la canción que empieza.
+    pub fn notify(title: &str, body: &str) {
+        use windows_sys::Win32::UI::Shell::{NIF_INFO, NIIF_INFO, NIIF_NOSOUND};
+        let h = MAIN_HWND.load(Ordering::Relaxed);
+        if h == 0 {
+            return;
+        }
+        unsafe {
+            let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
+            nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+            nid.hWnd = h as HWND;
+            nid.uID = TRAY_ICON_ID;
+            nid.uFlags = NIF_INFO;
+            nid.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
+            for (i, ch) in title.encode_utf16().take(63).enumerate() {
+                nid.szInfoTitle[i] = ch;
+            }
+            for (i, ch) in body.encode_utf16().take(255).enumerate() {
+                nid.szInfo[i] = ch;
+            }
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
         }
     }
 
@@ -884,6 +909,7 @@ struct App {
     /// «Tu biblioteca»: álbumes guardados y artistas seguidos (para los filtros).
     lib_albums: Vec<Playlist>,
     lib_artists: Vec<spotify_core::ArtistItem>,
+    lib_shows: Vec<Playlist>,
     library: Rc<VecModel<LibraryEntry>>,
     cards: Rc<VecModel<CardEntry>>,
     card_targets: Vec<Target>,
@@ -911,6 +937,8 @@ struct App {
     rows: Rc<VecModel<TrackEntry>>,
     context: Option<String>,
     timer: Timer,
+    notify: notify::NotifyState,
+    sleep: notify::SleepState,
     connect: connect::State,
     settings: settings::State,
     cover_url: Option<String>,
@@ -1122,6 +1150,7 @@ fn render_player(ui: &MainWindow, app: &mut App) {
                     }
                 }
             }
+            notify::track_changed(ui, app);
             if ui.get_now_playing_open() {
                 media::load_now(ui, app, &t);
             }
@@ -1253,9 +1282,18 @@ fn load_library(engine: Arc<Engine>) {
                 Some(p)
             }).collect();
             let artists: Vec<spotify_core::ArtistItem> = serde_json::from_value(parse("artists")).unwrap_or_default();
+            let shows: Vec<serde_json::Value> = serde_json::from_value(parse("shows")).unwrap_or_default();
+            let shows: Vec<Playlist> = shows.iter().filter_map(|sh| {
+                let mut p = Playlist::new(sh.get("id")?.as_str()?, sh.get("uri")?.as_str()?, sh.get("name")?.as_str()?);
+                p.images = serde_json::from_value(sh.get("images").cloned().unwrap_or(json!([]))).ok();
+                let publisher = sh.get("publisher").and_then(|x| x.as_str()).unwrap_or_default();
+                p.owner = Some(spotify_core::SpOwner { id: String::new(), display_name: Some(if publisher.is_empty() { "Podcast".into() } else { format!("Podcast · {publisher}") }) });
+                Some(p)
+            }).collect();
             on_ui(move |_ui, app| {
                 app.lib_albums = albums;
                 app.lib_artists = artists;
+                app.lib_shows = shows;
                 browse::rebuild_library(app);
             });
         }
@@ -1858,6 +1896,7 @@ fn main() -> Result<(), slint::PlatformError> {
             playlists: Vec::new(),
             lib_albums: Vec::new(),
             lib_artists: Vec::new(),
+            lib_shows: Vec::new(),
             library,
             cards,
             card_targets: Vec::new(),
@@ -1869,6 +1908,8 @@ fn main() -> Result<(), slint::PlatformError> {
             rows,
             context: None,
             timer: Timer::default(),
+            notify: notify::NotifyState::default(),
+            sleep: notify::SleepState::default(),
             connect: connect::State::default(),
             settings: settings::State::default(),
             cover_url: None,
@@ -1904,6 +1945,9 @@ fn main() -> Result<(), slint::PlatformError> {
             ui.set_page(page);
             ui.set_page_title(if page == 1 { "Buscar" } else { "Inicio" }.into());
         });
+    });
+    ui.on_set_sleep(|minutes| {
+        with_app(|ui, app| notify::set_sleep(ui, app, minutes));
     });
     ui.on_open_library(|i| {
         with_app(|ui, app| browse::open_library_row(ui, app, i as usize));

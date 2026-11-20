@@ -9,7 +9,7 @@ use anyhow::{anyhow, Result};
 use librespot_core::{session::Session, spotify_id::SpotifyId, SpotifyUri};
 use librespot_metadata::image::Images;
 use librespot_metadata::playlist::attribute::PlaylistAttributes;
-use librespot_metadata::{Album, Artist, Metadata, Playlist, Track};
+use librespot_metadata::{Album, Artist, Episode, Metadata, Playlist, Show, Track};
 use librespot_protocol::extended_metadata::{BatchedEntityRequest, EntityRequest, ExtensionQuery};
 use librespot_protocol::extension_kind::ExtensionKind;
 use librespot_protocol::playlist4_external::SelectedListContent;
@@ -345,6 +345,53 @@ pub async fn playlist_items(session: &Session, id: &str, offset: usize, limit: u
     Ok(json!({"items": items, "total": all.len(), "next": if more { json!("session") } else { Value::Null }}))
 }
 
+// ---- Podcasts ----
+
+static SHOWS: Mutex<Option<HashMap<String, (Instant, Arc<Show>)>>> = Mutex::new(None);
+
+async fn show_cached(session: &Session, id: &str) -> Result<Arc<Show>> {
+    if let Some(sh) = SHOWS.lock().unwrap().as_ref().and_then(|m| m.get(id))
+        .filter(|(t, _)| t.elapsed() < Duration::from_secs(300)).map(|(_, s)| s.clone()) {
+        return Ok(sh);
+    }
+    let uri = SpotifyUri::Show { id: SpotifyId::from_base62(id)? };
+    let sh = Arc::new(Show::get(session, &uri).await?);
+    let mut guard = SHOWS.lock().unwrap();
+    let map = guard.get_or_insert_with(HashMap::new);
+    if map.len() > 200 { map.clear(); }
+    map.insert(id.to_string(), (Instant::now(), sh.clone()));
+    Ok(sh)
+}
+
+/// Un episodio con la forma de una canción, para reutilizar las listas de la app
+/// (el «álbum» es el programa y el «artista», quien lo publica).
+fn episode_json(e: &Episode, show: &Show) -> Value {
+    let date = format!("{:04}-{:02}-{:02}", e.publish_time.year(), u8::from(e.publish_time.month()), e.publish_time.day());
+    let covers = if e.covers.is_empty() { &show.covers } else { &e.covers };
+    json!({
+        "id": id_of(&e.id), "uri": uri_of(&e.id), "name": e.name,
+        "artists": [{"name": if show.publisher.is_empty() { show.name.clone() } else { show.publisher.clone() }, "id": Value::Null}],
+        "album": {"name": show.name, "id": id_of(&show.id), "uri": uri_of(&show.id), "images": images_json(covers)},
+        "duration_ms": e.duration.max(0),
+        "explicit": e.is_explicit,
+        "release_date": date,
+    })
+}
+
+/// Episodios de un podcast (lo más reciente primero, como lo entrega Spotify), por páginas.
+pub async fn show_episodes(session: &Session, id: &str, offset: usize, limit: usize) -> Result<Value> {
+    let show = show_cached(session, id).await?;
+    let all: Vec<String> = show.episodes.iter().map(uri_of).collect();
+    let page: Vec<String> = all.iter().skip(offset).take(limit).cloned().collect();
+    let found: HashMap<String, Episode> = if page.is_empty() { HashMap::new() } else { batch(session, &page, ExtensionKind::EPISODE_V4).await? };
+    let items: Vec<Value> = page.iter().map(|u| json!({"track": found.get(u).map(|e| episode_json(e, &show))})).collect();
+    let more = offset + page.len() < all.len();
+    Ok(json!({
+        "items": items, "total": all.len(), "next": if more { json!("session") } else { Value::Null },
+        "show": {"name": show.name, "publisher": show.publisher, "description": show.description, "images": images_json(&show.covers)},
+    }))
+}
+
 // ---- Biblioteca: álbumes guardados y artistas seguidos (colección de la sesión) ----
 
 /// URIs de un conjunto de la colección (`collection` = canciones y álbumes, `artist` = artistas
@@ -367,10 +414,19 @@ async fn collection_uris(session: &Session, set: &str, prefix: &str, max: usize)
 
 /// Álbumes guardados y artistas seguidos para los filtros de «Tu biblioteca».
 pub async fn library_collection(session: &Session) -> Result<Value> {
-    let (album_uris, artist_uris) = tokio::join!(
+    let (album_uris, artist_uris, show_uris) = tokio::join!(
         collection_uris(session, "collection", "spotify:album:", 400),
         collection_uris(session, "artist", "spotify:artist:", 400),
+        collection_uris(session, "show", "spotify:show:", 200),
     );
+    let show_uris = show_uris.unwrap_or_default();
+    let shows: HashMap<String, Show> = if show_uris.is_empty() { HashMap::new() } else {
+        batch(session, &show_uris, ExtensionKind::SHOW_V4).await.unwrap_or_default()
+    };
+    let shows: Vec<Value> = show_uris.iter().filter_map(|u| shows.get(u)).map(|sh| json!({
+        "id": id_of(&sh.id), "uri": uri_of(&sh.id), "name": sh.name, "publisher": sh.publisher,
+        "images": images_json(&sh.covers),
+    })).collect();
     let album_uris = album_uris.unwrap_or_default();
     let artist_uris = artist_uris.unwrap_or_default();
     let albums = if album_uris.is_empty() { HashMap::new() } else { albums_cached(session, &album_uris).await.unwrap_or_default() };
@@ -386,7 +442,7 @@ pub async fn library_collection(session: &Session) -> Result<Value> {
         "id": id_of(&a.id), "uri": uri_of(&a.id), "name": a.name,
         "images": images_json(if a.portraits.is_empty() { &a.portrait_group } else { &a.portraits }),
     })).collect();
-    Ok(json!({"albums": albums, "artists": artists}))
+    Ok(json!({"albums": albums, "artists": artists, "shows": shows}))
 }
 
 // ---- Canciones que te gustan (colección), sin Web API ----
@@ -1188,6 +1244,16 @@ fn search_response(body: &Value, types: &str) -> Result<Value> {
     if want("playlist") {
         let items: Vec<Value> = search_items(root, "playlists").filter_map(pf_playlist).collect();
         out.insert("playlists".into(), json!({"items": items}));
+    }
+    if want("show") {
+        let items: Vec<Value> = search_items(root, "podcasts").filter_map(|h| {
+            let d = h.get("data")?; let uri = d.get("uri")?.as_str()?;
+            if !uri.starts_with("spotify:show:") { return None; }
+            let publisher = d.pointer("/publisher/name").and_then(Value::as_str).unwrap_or_default();
+            Some(json!({"id": id_from(uri), "uri": uri, "name": d.get("name")?.as_str()?, "images": pf_image(d),
+                "owner": {"id": "", "display_name": if publisher.is_empty() { "Podcast".to_string() } else { format!("Podcast · {publisher}") }}}))
+        }).collect();
+        out.insert("shows".into(), json!({"items": items}));
     }
     Ok(Value::Object(out))
 }

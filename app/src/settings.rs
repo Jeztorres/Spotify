@@ -161,6 +161,7 @@ fn load_prefs(ui: &MainWindow) {
     ui.set_show_translation(get("translate_lyrics", false));
     ui.set_pref_tray(get("tray", true));
     ui.set_pref_wavy_scrubber(get("wavy_scrubber", false));
+    ui.set_pref_notify(get("notify", true));
     ui.set_pref_bar_mode(get_i("bar_mode", 0).clamp(0, 2));
     let palette_max = slint::Model::row_count(&ui.get_bar_palette()) as i32 - 1;
     // Tema único; si viene de una versión anterior se reutiliza el color del reproductor o de la barra lateral.
@@ -202,6 +203,7 @@ fn save_prefs(ui: &MainWindow) {
         "translate_lyrics": ui.get_show_translation(),
         "tray": ui.get_pref_tray(),
         "wavy_scrubber": ui.get_pref_wavy_scrubber(),
+        "notify": ui.get_pref_notify(),
         "bar_mode": ui.get_pref_bar_mode(),
         "app_color": ui.get_pref_app_color(),
         "normalise": ui.get_pref_normalise(),
