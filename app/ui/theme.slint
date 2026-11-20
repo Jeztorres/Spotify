@@ -1,8 +1,11 @@
 // Paleta de SpotifyMac (Views.swift › Theme), alto contraste estilo Spotify.
 export global Theme {
-    out property <color> green: rgb(29, 185, 84);
-    out property <color> green-bright: rgb(31, 214, 97);
-    out property <color> bg: rgb(18, 18, 18);
+    // Tema de color de la app: cuando está activo, los acentos (antes siempre verdes) usan su color.
+    in-out property <bool> themed: false;
+    in-out property <color> theme-color: rgb(29, 185, 84);
+    out property <color> green: root.themed ? root.theme-color : rgb(29, 185, 84);
+    out property <color> green-bright: root.themed ? root.theme-color.mix(#ffffff, 0.82) : rgb(31, 214, 97);
+    out property <color> bg: root.themed ? root.theme-color.mix(rgb(18, 18, 18), 0.05) : rgb(18, 18, 18);
     out property <color> panel: rgb(24, 24, 24);
     out property <color> side: #000000;
     out property <color> card: rgb(28, 28, 28);
