@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { IconPath, PlayPauseButton, RoundIconButton, Scrubber, VerticalEqSlider, NavItem, Cover } from "widgets.slint";
+import { IconPath, PlayPauseButton, RoundIconButton, Scrubber, VerticalEqSlider, NavItem, Cover, M3IconButton, M3PlayButton } from "widgets.slint";
 import { ScrollView, ListView, LineEdit, Button, ComboBox } from "std-widgets.slint";
 
 export { Theme }
@@ -106,6 +106,10 @@ global Icons {
     out property <string> library: "M4 4 V20 M9 4 V20 M13 5.5 L17.5 4 L21.5 18.5 L17 20 Z";
     out property <string> prev: "M19 5 L8 12 L19 19 Z M5 5 V19";
     out property <string> next: "M5 5 L16 12 L5 19 Z M19 5 V19";
+    // Versiones rellenas (Material 3) para el reproductor grande.
+    out property <string> prev-solid: "M6 5 C6.8 5 7.5 5.7 7.5 6.5 V17.5 C7.5 18.3 6.8 19 6 19 C5.2 19 4.5 18.3 4.5 17.5 V6.5 C4.5 5.7 5.2 5 6 5 Z M19.5 6.3 V17.7 C19.5 18.5 18.6 19 17.9 18.6 L9.6 13.2 C9 12.8 9 11.2 9.6 10.8 L17.9 5.4 C18.6 5 19.5 5.5 19.5 6.3 Z";
+    out property <string> next-solid: "M18 5 C18.8 5 19.5 5.7 19.5 6.5 V17.5 C19.5 18.3 18.8 19 18 19 C17.2 19 16.5 18.3 16.5 17.5 V6.5 C16.5 5.7 17.2 5 18 5 Z M4.5 6.3 V17.7 C4.5 18.5 5.4 19 6.1 18.6 L14.4 13.2 C15 12.8 15 11.2 14.4 10.8 L6.1 5.4 C5.4 5 4.5 5.5 4.5 6.3 Z";
+    out property <string> volume-low: "M11 5 L6 9 H2 V15 H6 L11 19 Z M15.5 8.5 C16.5 9.5 17 10.7 17 12 C17 13.3 16.5 14.5 15.5 15.5";
     out property <string> shuffle: "M2 18 H4.5 C8 18 9.5 15.5 11 12.5 C12.5 9.5 14 7 17.5 7 H22 M18 3 L22 7 L18 11 M2 6 H4.5 C6 6 7.2 6.6 8.2 7.6 M13.8 16.4 C14.8 17.4 16 18 17.5 18 H22 M18 14 L22 18 L18 22";
     out property <string> repeat: "M17 2 L21 6 L17 10 M3 11 V10 C3 7.8 4.8 6 7 6 H21 M7 22 L3 18 L7 14 M21 13 V14 C21 16.2 19.2 18 17 18 H3";
     out property <string> refresh: "M21 12 A9 9 0 1 1 12 3 C14.52 3 16.93 4 18.74 5.74 L21 8 M21 3 V8 H16";
@@ -984,7 +988,7 @@ export component MainWindow inherits Window {
     in property <bool> has-list-banner;
     in property <bool> list-editorial;
     // Fondo del perfil: el color de la foto del artista, algo más oscuro hacia abajo.
-    property <color> artist-base: root.list-tint.mix(#101116, 0.3);
+    property <color> artist-base: root.th-list-tint.mix(#101116, 0.3);
     property <length> sidebar-width: root.sidebar-visible ? (root.width < 1100px ? 236px : 280px) : 0px;
     property <bool> wide-artist: root.width >= 1250px;
     property <int> disco-tab: root.artist-catalog-tab == 0 && root.catalog-albums.length > 0 ? 0
@@ -994,8 +998,8 @@ export component MainWindow inherits Window {
     in property <color> list-tint: #292d3e;
     in property <color> list-pill: #424862;
     in property <color> list-accent: #ebebeb;
-    property <color> list-btn-accent: root.list-accent;
-    property <color> list-icon-tint: root.list-accent;
+    property <color> list-btn-accent: root.th-list-accent;
+    property <color> list-icon-tint: root.th-list-accent;
     in property <color> artist-accent: #bebebe;
     in property <string> list-kind: "PLAYLIST";
     in property <string> list-description;
@@ -1240,31 +1244,59 @@ export component MainWindow inherits Window {
     in property <color> tint: rgb(35, 35, 35);
     in property <color> track-pill: #1c1e26;
     in property <color> track-accent: #ebebeb;
-    property <color> player-accent: root.track-accent.mix(white, 0.08);
-    property <color> player-icon-tint: root.track-accent.mix(#ffffffe6, 0.32);
+    property <color> player-accent: root.th-track-accent.mix(white, 0.08);
+    property <color> player-icon-tint: root.th-track-accent.mix(#ffffffe6, 0.32);
+    // ---- Tokens Material 3 del reproductor grande ----
+    // Acento con color real (no casi blanco): se aclara solo si el color de la portada es muy oscuro.
+    property <float> np-base-lum: root.th-track-accent.red * 0.299 + root.th-track-accent.green * 0.587 + root.th-track-accent.blue * 0.114;
+    property <color> np-accent: root.th-track-accent.mix(#ffffff, root.np-base-lum < 80 ? 0.45 : (root.np-base-lum < 140 ? 0.68 : 0.88));
+    property <float> np-accent-lum: root.np-accent.red * 0.299 + root.np-accent.green * 0.587 + root.np-accent.blue * 0.114;
+    property <color> np-on-accent: root.np-accent-lum > 150 ? #121214 : #ffffff;
+    property <color> np-on-surface: root.np-accent.mix(#ffffff, 0.25);
+    property <color> np-on-surface-sub: root.np-accent.mix(#ffffff, 0.35).with-alpha(0.75);
+    property <color> np-tonal: root.np-accent.with-alpha(0.14);
+    property <color> np-tonal-hover: root.np-accent.with-alpha(0.22);
+    property <color> np-tonal-strong: root.np-accent.with-alpha(0.30);
     // ---- Apariencia de la barra del reproductor ----
     // Modo: 0 = Auto (colores de la portada) · 1 = Oscuro · 2 = Claro.
     in-out property <int> pref-bar-mode: 0;
-    // Color: 0 = el de la portada; 1..N = color elegido de la paleta.
-    in-out property <int> pref-bar-color: 0;
+    // ---- Tema de color de la app (uno solo para todo) ----
+    // 0 = predeterminado (colores dinámicos de cada portada/página); 1..N = color de la paleta,
+    // que pinta barra lateral, reproductor, páginas, perfiles, letras y acentos.
+    in-out property <int> pref-app-color: 0;
     out property <[color]> bar-palette: [#00000000, #1ed760, #2e77d0, #8d67ab, #e8115b, #f59b23, #27856a, #509bf5, #e1118c, #ffffff, #f9a8d4, #9d174d];
-    property <bool> bar-custom: root.pref-bar-color > 0 && root.pref-bar-color < root.bar-palette.length;
+    property <bool> app-themed: root.pref-app-color > 0 && root.pref-app-color < root.bar-palette.length;
+    property <color> app-color: root.app-themed ? root.bar-palette[root.pref-app-color] : #1ed760;
+    property <float> app-lum: root.app-color.red * 0.299 + root.app-color.green * 0.587 + root.app-color.blue * 0.114;
+    // Versión clara del color para texto/iconos sobre fondos oscuros.
+    property <color> app-light: root.app-color.mix(#ffffff, root.app-lum < 90 ? 0.5 : (root.app-lum < 150 ? 0.72 : 0.9));
+    property <color> th-tint: root.app-themed ? root.app-color.mix(#0f0f12, 0.40) : root.tint;
+    property <color> th-track-pill: root.app-themed ? root.app-color.mix(#121216, 0.30) : root.track-pill;
+    property <color> th-track-accent: root.app-themed ? root.app-light : root.track-accent;
+    property <color> th-list-tint: root.app-themed ? root.app-color.mix(#101014, 0.40) : root.list-tint;
+    property <color> th-list-pill: root.app-themed ? root.app-color.mix(#1a1a20, 0.45) : root.list-pill;
+    property <color> th-list-accent: root.app-themed ? root.app-light : root.list-accent;
+    property <color> th-artist-accent: root.app-themed ? root.app-light : root.artist-accent;
+    property <color> th-profile-tint: root.app-themed ? root.app-color.mix(#101014, 0.40) : root.profile-tint;
+    property <color> th-profile-pill: root.app-themed ? root.app-color.mix(#1a1a20, 0.45) : root.profile-pill;
+    property <color> th-profile-accent: root.app-themed ? root.app-light : root.profile-accent;
+    // Acentos globales (verdes por defecto) siguen al tema.
+    init => { Theme.themed = root.app-themed; Theme.theme-color = root.app-color; }
+    changed pref-app-color => { Theme.themed = root.app-themed; Theme.theme-color = root.app-color; }
+    property <bool> bar-custom: root.app-themed;
     property <bool> bar-light: root.pref-bar-mode == 2;
     // Color base del reproductor (portada o elegido por el usuario).
-    property <color> bar-accent: root.bar-custom ? root.bar-palette[root.pref-bar-color] : root.track-accent;
+    property <color> bar-accent: root.bar-custom ? root.app-color : root.th-track-accent;
     property <color> bar-surface: root.bar-light ? #f3f3f5 : #131316;
     property <brush> player-bar-bg: root.pref-bar-mode == 0
         ? (root.bar-custom
             ? @linear-gradient(135deg, root.bar-accent.mix(#0e0e10, 0.30) 0%, root.bar-accent.mix(#0e0e10, 0.44) 55%, root.bar-accent.mix(#0e0e10, 0.58) 100%)
-            : @linear-gradient(135deg, root.track-pill.darker(0.14) 0%, root.track-pill 48%, root.tint 100%))
+            : @linear-gradient(135deg, root.th-track-pill.darker(0.14) 0%, root.th-track-pill 48%, root.th-tint 100%))
         : @linear-gradient(135deg, root.bar-surface 0%, root.bar-accent.mix(root.bar-surface, root.bar-light ? 0.10 : 0.12) 55%, root.bar-accent.mix(root.bar-surface, root.bar-light ? 0.22 : 0.26) 100%);
-    // ---- Color de la barra lateral (Inicio, Buscar, Tu biblioteca) ----
-    // 0 = predeterminado (oscuro original); 1..N = color de `bar-palette`.
-    in-out property <int> pref-side-color: 0;
     // Menú emergente de la barra del reproductor (volumen y controles que no caben).
     in-out property <bool> bar-pop-open: false;
-    property <bool> side-custom: root.pref-side-color > 0 && root.pref-side-color < root.bar-palette.length;
-    property <color> side-base: root.side-custom ? root.bar-palette[root.pref-side-color] : Theme.green-bright;
+    property <bool> side-custom: root.app-themed;
+    property <color> side-base: root.side-custom ? root.app-color : Theme.green-bright;
     property <float> side-lum: root.side-base.red * 0.299 + root.side-base.green * 0.587 + root.side-base.blue * 0.114;
     property <brush> side-bg: root.side-custom
         ? @linear-gradient(180deg, root.side-base.mix(#0b0c10, 0.34) 0%, root.side-base.mix(#0d0e13, 0.20) 35%, root.side-base.mix(#0e0f14, 0.12) 100%)
@@ -1286,7 +1318,7 @@ export component MainWindow inherits Window {
     property <color> bar-hover-bg: root.bar-light ? #0000000f : #ffffff1c;
     property <color> bar-track: root.bar-light ? #0000001f : #ffffff2e;
     property <color> bar-border: root.bar-light ? #00000014 : root.bar-accent.with-alpha(0.28);
-    property <color> surface-tint: root.page >= 2 ? root.list-tint : root.tint;
+    property <color> surface-tint: root.page >= 2 ? root.th-list-tint : root.th-tint;
     // Color de fondo de la página abierta (perfil de artista, playlist, Inicio…): el panel derecho lo comparte.
     property <color> page-bg: root.page == 3 ? root.artist-base : root.surface-tint;
     in property <bool> is-macos: false;
@@ -1733,7 +1765,7 @@ export component MainWindow inherits Window {
                                 alignment: start; spacing: 7px;
                                 if root.list-header-artist != "": Rectangle {
                                     height: 28px; width: chip-artist-lay.preferred-width; border-radius: 14px;
-                                    background: root.list-header-artist-clickable && chip-artist-ta.has-hover ? root.list-pill.brighter(0.22) : root.list-pill.with-alpha(0.75);
+                                    background: root.list-header-artist-clickable && chip-artist-ta.has-hover ? root.th-list-pill.brighter(0.22) : root.th-list-pill.with-alpha(0.75);
                                     border-width: 1px; border-color: #ffffff24;
                                     chip-artist-lay := HorizontalLayout {
                                         padding-left: root.list-artist-avatar.width > 0 ? 5px : 10px;
@@ -1764,7 +1796,7 @@ export component MainWindow inherits Window {
                                 }
                                 Rectangle {
                                     height: 28px; width: chip-kind-lay.preferred-width; border-radius: 14px;
-                                    background: root.list-pill.with-alpha(0.75); border-width: 1px; border-color: #ffffff24;
+                                    background: root.th-list-pill.with-alpha(0.75); border-width: 1px; border-color: #ffffff24;
                                     chip-kind-lay := HorizontalLayout {
                                         padding-left: 9px; padding-right: 10px; spacing: 5px; alignment: center;
                                         IconPath { d: Icons.info; width: 13px; height: 13px; tint: #ffffffe0; y: (parent.height - self.height) / 2; }
@@ -1773,7 +1805,7 @@ export component MainWindow inherits Window {
                                 }
                                 if root.list-tracks-chip != "": Rectangle {
                                     height: 28px; width: chip-tracks-lay.preferred-width; border-radius: 14px;
-                                    background: root.list-pill.with-alpha(0.75); border-width: 1px; border-color: #ffffff24;
+                                    background: root.th-list-pill.with-alpha(0.75); border-width: 1px; border-color: #ffffff24;
                                     chip-tracks-lay := HorizontalLayout {
                                         padding-left: 9px; padding-right: 10px; spacing: 5px; alignment: center;
                                         IconPath { d: Icons.note; width: 13px; height: 13px; tint: #ffffffe0; y: (parent.height - self.height) / 2; }
@@ -1782,7 +1814,7 @@ export component MainWindow inherits Window {
                                 }
                                 if root.list-duration-chip != "": Rectangle {
                                     height: 28px; width: chip-dur-lay.preferred-width; border-radius: 14px;
-                                    background: root.list-pill.with-alpha(0.75); border-width: 1px; border-color: #ffffff24;
+                                    background: root.th-list-pill.with-alpha(0.75); border-width: 1px; border-color: #ffffff24;
                                     chip-dur-lay := HorizontalLayout {
                                         padding-left: 9px; padding-right: 10px; spacing: 5px; alignment: center;
                                         IconPath { d: Icons.clock; width: 13px; height: 13px; tint: #ffffffe0; y: (parent.height - self.height) / 2; }
@@ -1794,7 +1826,7 @@ export component MainWindow inherits Window {
                                 alignment: start; spacing: 10px; padding-top: 2px;
                                 Rectangle {
                                     height: 36px; width: play-pill-lay.preferred-width; border-radius: 18px;
-                                    background: play-pill-ta.has-hover ? root.list-pill.brighter(0.18) : root.list-pill;
+                                    background: play-pill-ta.has-hover ? root.th-list-pill.brighter(0.18) : root.th-list-pill;
                                     border-width: 1px; border-color: #ffffff24;
                                     opacity: root.tracks.length > 0 ? 1 : 0.5;
                                     play-pill-lay := HorizontalLayout {
@@ -1807,8 +1839,8 @@ export component MainWindow inherits Window {
                                 Rectangle {
                                     height: 36px; width: shuf-pill-lay.preferred-width; border-radius: 18px;
                                     background: root.shuffle
-                                        ? (shuf-pill-ta.has-hover ? root.list-pill.brighter(0.28) : root.list-pill.brighter(0.14))
-                                        : (shuf-pill-ta.has-hover ? root.list-pill.brighter(0.14) : root.list-pill.with-alpha(0.75));
+                                        ? (shuf-pill-ta.has-hover ? root.th-list-pill.brighter(0.28) : root.th-list-pill.brighter(0.14))
+                                        : (shuf-pill-ta.has-hover ? root.th-list-pill.brighter(0.14) : root.th-list-pill.with-alpha(0.75));
                                     border-width: 1px; border-color: root.shuffle ? white.with-alpha(0.75) : #ffffff24;
                                     shuf-pill-lay := HorizontalLayout {
                                         padding-left: 16px; padding-right: 18px; spacing: 8px; alignment: center;
@@ -1961,12 +1993,12 @@ export component MainWindow inherits Window {
                         height: root.motion-ready ? clamp(self.width * 9 / 16, 340px, root.height * 0.68) : (root.height < 700px ? 340px : 430px);
                         animate height { duration: 450ms; easing: ease-in-out; }
                         clip: true;
-                        background: root.list-tint;
+                        background: root.th-list-tint;
                         Rectangle {
                             x: hero.width - hero.photo-w; width: hero.photo-w; height: hero.height;
                             opacity: root.motion-ready ? 0 : 1; animate opacity { duration: 500ms; }
                             Image { x: 0; y: 0; width: hero.photo-w; height: hero.height; source: root.list-cover; image-fit: contain; }
-                            Rectangle { x: 0; width: parent.width * 0.4; height: parent.height; background: @linear-gradient(90deg, root.list-tint 0%, root.list-tint.with-alpha(0) 100%); }
+                            Rectangle { x: 0; width: parent.width * 0.4; height: parent.height; background: @linear-gradient(90deg, root.th-list-tint 0%, root.th-list-tint.with-alpha(0) 100%); }
                         }
                         Image { width: parent.width; height: parent.height; source: root.motion-frame; image-fit: cover; opacity: root.motion-ready ? 1 : 0; animate opacity { duration: 600ms; } }
                         Rectangle { width: parent.width; height: parent.height; background: @linear-gradient(90deg, #00000066 0%, #00000000 60%); }
@@ -1988,20 +2020,20 @@ export component MainWindow inherits Window {
                                 if root.artist-stats != "": Text { text: root.artist-stats; color: #ffffffd0; font-family: Theme.text-font; font-size: 15px; font-weight: 500; horizontal-alignment: left; overflow: elide; }
                                 HorizontalLayout {
                                     alignment: start; spacing: 14px; padding-top: 12px;
-                                    PlayPauseButton { width: 64px; height: 64px; accent: root.artist-accent; enabled: root.tracks.length > 0; clicked => { root.play-list(); } }
+                                    PlayPauseButton { width: 64px; height: 64px; accent: root.th-artist-accent; enabled: root.tracks.length > 0; clicked => { root.play-list(); } }
                                     RoundIconButton {
                                         width: 44px; height: 44px; icon-size: 20px;
                                         y: (parent.height - self.height) / 2;
                                         d: Icons.shuffle; active: root.shuffle;
-                                        bg-color: root.artist-accent.darker(0.62);
-                                        active-color: root.artist-accent; icon-color: root.artist-accent;
+                                        bg-color: root.th-artist-accent.darker(0.62);
+                                        active-color: root.th-artist-accent; icon-color: root.th-artist-accent;
                                         label: "Aleatorio"; clicked => { root.toggle-shuffle(); }
                                     }
                                     Rectangle {
                                         y: (parent.height - self.height) / 2;
                                         width: follow-art-txt.preferred-width + 28px; height: 36px; border-radius: 18px;
-                                        background: root.target-following ? root.artist-accent : (follow-art-ta.has-hover ? root.artist-accent.darker(0.45) : root.artist-accent.darker(0.62));
-                                        border-width: 1px; border-color: root.target-following ? root.artist-accent.brighter(0.2) : root.artist-accent.darker(0.3);
+                                        background: root.target-following ? root.th-artist-accent : (follow-art-ta.has-hover ? root.th-artist-accent.darker(0.45) : root.th-artist-accent.darker(0.62));
+                                        border-width: 1px; border-color: root.target-following ? root.th-artist-accent.brighter(0.2) : root.th-artist-accent.darker(0.3);
                                         opacity: root.target-follow-busy ? 0.55 : 1;
                                         follow-art-txt := Text {
                                             text: root.target-following ? "Siguiendo" : "Seguir";
@@ -2016,8 +2048,8 @@ export component MainWindow inherits Window {
                                     Rectangle {
                                         y: (parent.height - self.height) / 2;
                                         width: radio-art-txt.preferred-width + 26px; height: 36px; border-radius: 18px;
-                                        background: radio-art-ta.has-hover ? root.artist-accent.darker(0.45) : root.artist-accent.darker(0.62);
-                                        border-width: 1px; border-color: root.artist-accent.darker(0.3);
+                                        background: radio-art-ta.has-hover ? root.th-artist-accent.darker(0.45) : root.th-artist-accent.darker(0.62);
+                                        border-width: 1px; border-color: root.th-artist-accent.darker(0.3);
                                         radio-art-txt := Text {
                                             text: "Radio";
                                             color: white; font-size: 13px; font-weight: 600;
@@ -2407,24 +2439,14 @@ export component MainWindow inherits Window {
                                 }
                             }
                             SettingRow {
-                                title: root.pref-lang == "en" ? "Player color" : "Color del reproductor";
-                                detail: root.pref-lang == "en" ? "Tints icons, bars and background. «A» uses the cover color." : "Tiñe iconos, barras y fondo. «A» usa el color de la portada.";
-                                ColorSwatches {
-                                    palette: root.bar-palette; selected: root.pref-bar-color;
-                                    first-fill: root.track-accent.mix(root.track-pill, 0.6);
-                                    first-name: root.pref-lang == "en" ? "Cover color" : "Color de la portada";
-                                    picked(i) => { root.pref-bar-color = i; root.pref-changed(); }
-                                }
-                            }
-                            SettingRow {
-                                title: root.pref-lang == "en" ? "Sidebar color" : "Color de la barra lateral";
-                                detail: root.pref-lang == "en" ? "Home, Search and Your Library. «D» is the default dark look." : "Inicio, Buscar y Tu biblioteca. «D» es el oscuro predeterminado.";
+                                title: root.pref-lang == "en" ? "App color theme" : "Tema de color de la app";
+                                detail: root.pref-lang == "en" ? "One color for everything: sidebar, player, pages, artist profiles and lyrics. «D» keeps the default colors from each cover." : "Un solo color para todo: barra lateral, reproductor, páginas, perfiles de artista y letras. «D» mantiene los colores de cada portada.";
                                 last: true;
                                 ColorSwatches {
-                                    palette: root.bar-palette; selected: root.pref-side-color;
-                                    first-fill: #0e0f14; first-label: "D";
+                                    palette: root.bar-palette; selected: root.pref-app-color;
+                                    first-fill: root.track-accent.mix(root.track-pill, 0.6); first-label: "D";
                                     first-name: root.pref-lang == "en" ? "Default" : "Predeterminado";
-                                    picked(i) => { root.pref-side-color = i; root.pref-changed(); }
+                                    picked(i) => { root.pref-app-color = i; root.pref-changed(); }
                                 }
                             }
                         }
@@ -2461,7 +2483,7 @@ export component MainWindow inherits Window {
 
             if root.page == 5: Rectangle {
                 x: 0; y: 0; width: parent.width; height: parent.height;
-                background: @linear-gradient(180deg, root.profile-tint 0%, root.profile-tint.darker(0.55) 100%);
+                background: @linear-gradient(180deg, root.th-profile-tint 0%, root.th-profile-tint.darker(0.55) 100%);
                 profile-sv := ScrollView {
                     x: 0; y: 0; width: parent.width; height: parent.height;
                     content-y <=> root.profile-scroll;
@@ -2476,8 +2498,8 @@ export component MainWindow inherits Window {
                             spacing: 36px;
                             Rectangle {
                                 width: root.width < 1100px ? 140px : 188px; height: self.width;
-                                border-radius: self.width / 2; clip: true; background: root.profile-pill;
-                                border-width: 2px; border-color: root.profile-accent;
+                                border-radius: self.width / 2; clip: true; background: root.th-profile-pill;
+                                border-width: 2px; border-color: root.th-profile-accent;
                                 drop-shadow-blur: 28px; drop-shadow-color: #00000099;
                                 Text { text: "♪"; color: Theme.sub; font-size: 48px; horizontal-alignment: center; vertical-alignment: center; }
                                 Image { width: 100%; height: 100%; source: root.profile-image; image-fit: cover; }
@@ -2486,7 +2508,7 @@ export component MainWindow inherits Window {
                                 alignment: center; spacing: 0px; horizontal-stretch: 1;
                                 Rectangle {
                                     height: 22px; width: prof-badge.preferred-width + 20px; border-radius: 11px;
-                                    background: root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.28);
+                                    background: root.th-profile-pill; border-width: 1px; border-color: root.th-profile-pill.brighter(0.28);
                                     prof-badge := Text {
                                         text: root.profile-is-me ? I18n.profile-badge-me : I18n.profile-badge-other;
                                         color: white; font-size: 10px; font-weight: 800; letter-spacing: 0.8px;
@@ -2507,18 +2529,18 @@ export component MainWindow inherits Window {
                                     spacing: 10px; alignment: start;
                                     if root.profile-playlists-count != "": Rectangle {
                                         height: 30px; width: pl-stat.preferred-width + 24px; border-radius: 15px;
-                                        background: root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.25);
+                                        background: root.th-profile-pill; border-width: 1px; border-color: root.th-profile-pill.brighter(0.25);
                                         pl-stat := Text { text: root.profile-playlists-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                                     }
                                     if root.profile-followers-count != "": Rectangle {
                                         height: 30px; width: flw-stat.preferred-width + 24px; border-radius: 15px;
-                                        background: flw-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.25);
+                                        background: flw-ta.has-hover ? root.th-profile-pill.brighter(0.18) : root.th-profile-pill; border-width: 1px; border-color: root.th-profile-pill.brighter(0.25);
                                         flw-stat := Text { text: root.profile-followers-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                                         flw-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-profile-people(1); } }
                                     }
                                     if root.profile-following-count != "": Rectangle {
                                         height: 30px; width: fng-stat.preferred-width + 24px; border-radius: 15px;
-                                        background: fng-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill; border-width: 1px; border-color: root.profile-pill.brighter(0.25);
+                                        background: fng-ta.has-hover ? root.th-profile-pill.brighter(0.18) : root.th-profile-pill; border-width: 1px; border-color: root.th-profile-pill.brighter(0.25);
                                         fng-stat := Text { text: root.profile-following-count; color: white; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                                         fng-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-profile-people(0); } }
                                     }
@@ -2528,15 +2550,15 @@ export component MainWindow inherits Window {
                                     alignment: start; spacing: 12px;
                                     if root.profile-is-me: Rectangle {
                                         width: cfg-txt.preferred-width + 28px; height: 34px; border-radius: 17px;
-                                        background: cfg-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill;
-                                        border-width: 1px; border-color: root.profile-pill.brighter(0.32);
+                                        background: cfg-ta.has-hover ? root.th-profile-pill.brighter(0.18) : root.th-profile-pill;
+                                        border-width: 1px; border-color: root.th-profile-pill.brighter(0.32);
                                         cfg-txt := Text { text: I18n.settings-title; color: white; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                                         cfg-ta := TouchArea { mouse-cursor: pointer; clicked => { root.open-settings(); } }
                                     }
                                     if !root.profile-is-me: Rectangle {
                                         width: follow-prof-txt.preferred-width + 28px; height: 34px; border-radius: 17px;
-                                        background: root.target-following ? root.profile-accent : (follow-prof-ta.has-hover ? root.profile-pill.brighter(0.18) : root.profile-pill);
-                                        border-width: 1px; border-color: root.target-following ? root.profile-accent : root.profile-pill.brighter(0.32);
+                                        background: root.target-following ? root.th-profile-accent : (follow-prof-ta.has-hover ? root.th-profile-pill.brighter(0.18) : root.th-profile-pill);
+                                        border-width: 1px; border-color: root.target-following ? root.th-profile-accent : root.th-profile-pill.brighter(0.32);
                                         opacity: root.target-follow-busy ? 0.55 : 1;
                                         follow-prof-txt := Text {
                                             text: root.target-following ? I18n.profile-following : I18n.profile-follow;
@@ -2796,7 +2818,7 @@ export component MainWindow inherits Window {
                     provider: root.lyrics-provider; message: root.lyrics-message;
                     show-translation: root.show-translation; has-translation: root.lyrics-has-translation;
                     same-language: root.lyrics-same-language; translating: root.lyrics-translating;
-                    accent: root.track-accent;
+                    accent: root.th-track-accent;
                     seek(i) => { root.seek-lyric(i); }
                     toggle-translation => { root.toggle-translation(); }
                 }
@@ -3021,8 +3043,8 @@ export component MainWindow inherits Window {
     if root.mini-player-open: Rectangle {
         width: parent.width; height: parent.height;
         border-radius: 14px;
-        border-width: 1px; border-color: root.track-accent.with-alpha(0.38);
-        background: @linear-gradient(145deg, root.tint.darker(0.12) 0%, #0d0d12 100%);
+        border-width: 1px; border-color: root.th-track-accent.with-alpha(0.38);
+        background: @linear-gradient(145deg, root.th-tint.darker(0.12) 0%, #0d0d12 100%);
         TouchArea {
             pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.window-drag(); } }
         }
@@ -3066,9 +3088,24 @@ export component MainWindow inherits Window {
     // controles) se desvanecen y se oculta también el cursor.
     if root.now-playing-open: Rectangle {
         width: parent.width; height: parent.height; clip: true;
-        background: @linear-gradient(155deg, root.tint.darker(0.35) 0%, root.tint.darker(0.65) 55%, #090707 100%);
+        background: @linear-gradient(160deg, root.th-tint.darker(0.25) 0%, root.th-tint.darker(0.62) 55%, root.th-tint.mix(#060606, 0.12) 100%);
         animate background { duration: 500ms; easing: ease-in-out; }
-        Rectangle { background: #00000044; }
+        // Fondo fluido: dos halos del color de la canción que se desplazan despacio mientras suena.
+        property <bool> glow-moving: root.playing && root.pref-motion && !root.pref-battery-saver;
+        property <angle> glow-phase: self.glow-moving ? animation-tick() / 45ms * 1deg : 0deg;
+        Rectangle {
+            width: parent.width * 0.75; height: self.width;
+            x: -parent.width * 0.18 + sin(parent.glow-phase) * parent.width * 0.06;
+            y: -self.height * 0.45 + cos(parent.glow-phase * 0.8) * parent.height * 0.05;
+            background: @radial-gradient(circle, root.np-accent.with-alpha(0.30) 0%, root.np-accent.with-alpha(0.10) 40%, transparent 70%);
+        }
+        Rectangle {
+            width: parent.width * 0.7; height: self.width;
+            x: parent.width * 0.5 + cos(parent.glow-phase * 0.7) * parent.width * 0.07;
+            y: parent.height * 0.35 + sin(parent.glow-phase * 0.9) * parent.height * 0.06;
+            background: @radial-gradient(circle, root.th-track-pill.mix(root.np-accent, 0.5).with-alpha(0.35) 0%, transparent 68%);
+        }
+        Rectangle { background: #00000033; }
 
         np-ta := TouchArea {
             width: parent.width; height: parent.height;
@@ -3077,19 +3114,20 @@ export component MainWindow inherits Window {
             changed mouse-y => { root.np-activity(); }
             pointer-event(e) => { if e.kind == PointerEventKind.down { root.np-activity(); } }
 
+            // ---- Barra superior (botones tonales Material 3) ----
             HorizontalLayout {
-                x: 32px; y: 24px; spacing: 10px;
+                x: 32px; y: 22px; height: 40px; spacing: 10px;
                 opacity: root.np-controls-visible ? 1 : 0;
                 animate opacity { duration: 350ms; easing: ease-in-out; }
 
                 Rectangle {
-                    width: 104px; height: 36px; border-radius: 18px;
-                    background: full-close.has-hover ? root.player-accent.with-alpha(0.28) : root.tint.with-alpha(0.55);
-                    border-width: 1px; border-color: root.player-accent.with-alpha(0.28);
-                    HorizontalLayout {
-                        alignment: center; spacing: 6px;
-                        IconPath { d: Icons.chevron-down; tint: root.player-icon-tint; y: (parent.height - self.height) / 2; }
-                        Text { text: "Cerrar"; color: root.player-icon-tint; font-size: 14px; vertical-alignment: center; }
+                    width: close-row.preferred-width + 32px; height: 40px; border-radius: 20px;
+                    background: full-close.pressed ? root.np-tonal-strong : (full-close.has-hover ? root.np-tonal-hover : root.np-tonal);
+                    animate background { duration: 140ms; }
+                    close-row := HorizontalLayout {
+                        alignment: center; spacing: 8px;
+                        IconPath { d: Icons.chevron-down; tint: root.np-on-surface; y: (parent.height - self.height) / 2; }
+                        Text { text: "Cerrar"; color: root.np-on-surface; font-size: 14px; font-weight: 600; vertical-alignment: center; }
                     }
                     full-close := TouchArea {
                         mouse-cursor: pointer;
@@ -3099,22 +3137,21 @@ export component MainWindow inherits Window {
                 }
 
                 Rectangle {
-                    width: root.np-cover-expanded ? 158px : 168px; height: 36px; border-radius: 18px;
-                    background: root.np-cover-expanded ? root.player-accent.with-alpha(0.32) : (full-expand.has-hover ? root.player-accent.with-alpha(0.28) : root.tint.with-alpha(0.55));
-                    border-width: 1px; border-color: root.np-cover-expanded ? root.player-accent.with-alpha(0.60) : root.player-accent.with-alpha(0.28);
-                    animate background, width { duration: 180ms; easing: ease-out; }
-                    HorizontalLayout {
-                        alignment: center; spacing: 6px;
+                    width: expand-row.preferred-width + 32px; height: 40px; border-radius: root.np-cover-expanded ? 14px : 20px;
+                    background: root.np-cover-expanded ? root.np-accent : (full-expand.pressed ? root.np-tonal-strong : (full-expand.has-hover ? root.np-tonal-hover : root.np-tonal));
+                    animate background, border-radius { duration: 200ms; easing: ease-out; }
+                    expand-row := HorizontalLayout {
+                        alignment: center; spacing: 8px;
                         IconPath {
                             d: root.np-cover-expanded ? Icons.shrink : Icons.expand;
-                            width: 15px; height: 15px;
-                            tint: root.player-icon-tint;
+                            width: 16px; height: 16px;
+                            tint: root.np-cover-expanded ? root.np-on-accent : root.np-on-surface;
                             y: (parent.height - self.height) / 2;
                         }
                         Text {
                             text: root.np-cover-expanded ? "Portada normal" : "Extender portada";
-                            color: root.player-icon-tint;
-                            font-size: 13px;
+                            color: root.np-cover-expanded ? root.np-on-accent : root.np-on-surface;
+                            font-size: 14px; font-weight: 600;
                             vertical-alignment: center;
                         }
                     }
@@ -3129,80 +3166,137 @@ export component MainWindow inherits Window {
                 }
             }
 
+            // Botón segmentado Letra | Cola (Material 3), arriba a la derecha (deja sitio a los botones de ventana en Windows).
+            np-pill := TouchArea {
+                x: parent.width - self.width - (root.is-macos ? 32px : 168px); y: 22px;
+                width: 132px; height: 40px;
+                opacity: root.np-controls-visible ? 1 : 0;
+                animate opacity { duration: 350ms; easing: ease-in-out; }
+                changed has-hover => { root.np-hover-pill = self.has-hover; }
+                Rectangle {
+                    border-radius: 20px; background: root.np-tonal;
+                    border-width: 1px; border-color: root.np-accent.with-alpha(0.30);
+                }
+                HorizontalLayout {
+                    padding: 4px; spacing: 4px;
+                    Rectangle {
+                        horizontal-stretch: 1; border-radius: root.lyrics-open ? 16px : 12px;
+                        background: root.lyrics-open ? root.np-accent : (np-lyr-ta.has-hover ? root.np-tonal-hover : transparent);
+                        animate background, border-radius { duration: 200ms; easing: ease-out; }
+                        HorizontalLayout {
+                            alignment: center; spacing: 6px;
+                            IconPath { d: Icons.lyrics; width: 17px; height: 17px; y: (parent.height - self.height) / 2; tint: root.lyrics-open ? root.np-on-accent : root.np-on-surface; }
+                        }
+                        accessible-role: button; accessible-label: "Letra";
+                        np-lyr-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.full-queue-open = false;
+                                root.toggle-lyrics();
+                            }
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1; border-radius: root.full-queue-open && !root.lyrics-open ? 16px : 12px;
+                        background: root.full-queue-open && !root.lyrics-open ? root.np-accent : (np-q-ta.has-hover ? root.np-tonal-hover : transparent);
+                        animate background, border-radius { duration: 200ms; easing: ease-out; }
+                        HorizontalLayout {
+                            alignment: center;
+                            IconPath { d: Icons.queue; width: 17px; height: 17px; y: (parent.height - self.height) / 2; tint: root.full-queue-open && !root.lyrics-open ? root.np-on-accent : root.np-on-surface; }
+                        }
+                        accessible-role: button; accessible-label: "Cola de reproducción";
+                        np-q-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                if root.lyrics-open { root.toggle-lyrics(); root.full-queue-open = true; }
+                                else { root.full-queue-open = !root.full-queue-open; }
+                            }
+                        }
+                    }
+                }
+            }
+
             Rectangle {
-                x: root.width < 1000px ? 32px : 64px; y: 76px;
+                x: root.width < 1000px ? 32px : 64px; y: 84px;
                 width: parent.width - self.x * 2; height: parent.height - 108px;
                 property <bool> panel-open: root.lyrics-open || root.full-queue-open;
                 property <bool> compact-np: root.width < 1100px || root.height < 700px;
-                property <length> controls-h: self.compact-np ? 214px : 226px;
-                property <length> left-width: root.np-cover-expanded ? min(self.width * 0.52, 820px) : min(self.width * 0.43, 650px);
+                property <length> controls-h: self.compact-np ? 236px : 256px;
+                property <length> left-width: root.np-cover-expanded ? min(self.width * 0.52, 820px) : min(self.width * 0.43, 620px);
                 // Tope en 1080px para mantener la nitidez nativa de portadas (1200px) y motion (1080px) sin perder calidad.
                 property <length> cover-size: root.np-cover-expanded
                     ? max(160px, min(self.panel-open ? self.left-width : (self.width - 32px), min(self.height - 24px, 1080px)))
-                    : max(120px, min(self.panel-open ? self.left-width : min(self.width * 0.55, 560px), self.height - self.controls-h - 24px));
+                    : max(120px, min(self.panel-open ? self.left-width : min(self.width * 0.55, 540px), self.height - self.controls-h - 28px));
                 property <length> controls-w: root.np-cover-expanded
-                    ? min(self.cover-size, max(360px, min(self.width * 0.55, 560px)))
-                    : (self.panel-open ? min(self.left-width, max(self.cover-size, 360px)) : max(self.cover-size, min(self.width * 0.65, 460px)));
+                    ? min(self.cover-size, max(380px, min(self.width * 0.55, 560px)))
+                    : (self.panel-open ? min(self.left-width, max(self.cover-size, 380px)) : max(self.cover-size, min(self.width * 0.65, 480px)));
                 property <length> stage-x: self.panel-open ? (self.left-width - self.cover-size) / 2 : (self.width - self.cover-size) / 2;
                 property <length> controls-x: self.panel-open ? (self.left-width - self.controls-w) / 2 : (self.width - self.controls-w) / 2;
                 property <length> stage-y: root.np-cover-expanded
                     ? max(0px, (self.height - self.cover-size) / 2)
-                    : max(0px, (self.height - self.cover-size - self.controls-h - 14px) / 2);
+                    : max(0px, (self.height - self.cover-size - self.controls-h - 18px) / 2);
                 property <length> right-x: self.left-width + max(32px, self.width * 0.06);
 
+                // Portada: esquinas grandes (Material 3) y sombra suave.
                 Rectangle {
                     x: parent.stage-x; y: parent.stage-y;
                     width: parent.cover-size; height: self.width;
-                    animate x, y, width, height { duration: 280ms; easing: ease-in-out; }
-                    border-radius: 10px; clip: true; background: Theme.hover;
-                    Image { width: 100%; height: 100%; source: root.track-cover; image-fit: cover; image-rendering: smooth; }
-                    Image {
-                        width: 100%; height: 100%; source: root.track-motion-frame; image-fit: cover; image-rendering: smooth;
-                        opacity: root.track-motion-ready ? 1 : 0;
-                        animate opacity { duration: 600ms; }
+                    animate x, y, width, height { duration: 320ms; easing: ease-in-out; }
+                    border-radius: root.np-cover-expanded ? 20px : 24px;
+                    drop-shadow-blur: 40px; drop-shadow-offset-y: 14px; drop-shadow-color: #000000a0;
+                    background: Theme.hover;
+                    Rectangle {
+                        border-radius: parent.border-radius; clip: true;
+                        Image { width: 100%; height: 100%; source: root.track-cover; image-fit: cover; image-rendering: smooth; }
+                        Image {
+                            width: 100%; height: 100%; source: root.track-motion-frame; image-fit: cover; image-rendering: smooth;
+                            opacity: root.track-motion-ready ? 1 : 0;
+                            animate opacity { duration: 600ms; }
+                        }
                     }
                 }
                 // Título y artista siempre a la vista en modo normal; en portada extendida los controles flotan y se ocultan al reposo.
                 np-controls := TouchArea {
                     x: parent.controls-x;
-                    y: root.np-cover-expanded ? (parent.height - self.height - 8px) : (parent.stage-y + parent.cover-size + 14px);
+                    y: root.np-cover-expanded ? (parent.height - self.height - 8px) : (parent.stage-y + parent.cover-size + 18px);
                     width: parent.controls-w;
-                    height: parent.controls-h + (root.np-cover-expanded ? 24px : 0px);
+                    height: parent.controls-h + (root.np-cover-expanded ? 28px : 0px);
                     opacity: root.np-cover-expanded ? (root.np-controls-visible ? 1 : 0) : 1;
-                    animate x, y, opacity { duration: 280ms; easing: ease-in-out; }
+                    animate x, y, opacity { duration: 320ms; easing: ease-in-out; }
                     changed mouse-x => { root.np-activity(); }
                     changed mouse-y => { root.np-activity(); }
                     pointer-event(e) => { if e.kind == PointerEventKind.down { root.np-activity(); } }
                     changed has-hover => { root.np-hover-controls = self.has-hover && root.np-controls-visible; }
                     if root.np-cover-expanded: Rectangle {
                         width: parent.width; height: parent.height;
-                        border-radius: 16px;
-                        background: #0c0a0ad8;
-                        border-width: 1px; border-color: #ffffff1f;
-                        drop-shadow-blur: 24px; drop-shadow-color: #00000099;
+                        border-radius: 28px;
+                        background: root.th-tint.mix(#08080a, 0.25).with-alpha(0.88);
+                        border-width: 1px; border-color: root.np-accent.with-alpha(0.22);
+                        drop-shadow-blur: 30px; drop-shadow-color: #000000a0;
                     }
                     VerticalLayout {
                         width: parent.width; height: parent.height;
-                        padding: root.np-cover-expanded ? 12px : 0px;
-                        spacing: 6px;
+                        padding: root.np-cover-expanded ? 14px : 0px;
+                        spacing: 8px;
+                        // Título · artista · me gusta · opciones
                         HorizontalLayout {
-                            height: root.width < 1100px || root.height < 700px ? 56px : 64px; spacing: 8px;
+                            height: root.width < 1100px || root.height < 700px ? 56px : 64px; spacing: 6px;
                             VerticalLayout {
                                 horizontal-stretch: 1; min-width: 0px; alignment: center; spacing: 3px;
                                 Text {
                                     text: root.track-title;
                                     font-family: Theme.display-font;
-                                    font-size: root.width < 1100px || root.height < 700px ? 22px : 26px;
-                                    font-weight: 800; letter-spacing: -0.5px; color: white; overflow: elide;
+                                    font-size: root.width < 1100px || root.height < 700px ? 23px : 28px;
+                                    font-weight: 800; letter-spacing: -0.6px; color: white; overflow: elide;
                                 }
                                 Rectangle {
                                     height: root.width < 1100px || root.height < 700px ? 22px : 24px;
                                     np-artist-text := Text {
                                         x: 0; y: 0; width: min(self.preferred-width, parent.width); height: parent.height;
-                                        text: root.track-artist + (root.track-album != "" ? " – " + root.track-album : "");
-                                        font-size: root.width < 1100px || root.height < 700px ? 15px : 17px;
+                                        text: root.track-artist + (root.track-album != "" ? " · " + root.track-album : "");
+                                        font-size: root.width < 1100px || root.height < 700px ? 15px : 16px;
                                         font-weight: 500; vertical-alignment: center; overflow: elide;
-                                        color: np-artist-ta.has-hover ? white : root.player-icon-tint;
+                                        color: np-artist-ta.has-hover ? white : root.np-on-surface-sub;
                                     }
                                     np-artist-ta := TouchArea {
                                         x: 0; y: 0; width: np-artist-text.width; height: parent.height;
@@ -3217,154 +3311,159 @@ export component MainWindow inherits Window {
                                 }
                             }
                             HorizontalLayout {
-                                spacing: 8px;
+                                spacing: 4px;
                                 opacity: root.np-controls-visible ? 1 : 0;
                                 animate opacity { duration: 350ms; easing: ease-in-out; }
                                 if root.track-explicit: Rectangle {
-                                    width: 20px; height: 20px; y: (parent.height - self.height) / 2; border-radius: 4px; background: root.player-accent.with-alpha(0.24);
-                                    Text { text: "E"; font-size: 11px; font-weight: 800; color: root.player-icon-tint; horizontal-alignment: center; vertical-alignment: center; }
+                                    width: 20px; height: 20px; y: (parent.height - self.height) / 2; border-radius: 5px; background: root.np-tonal-hover;
+                                    Text { text: "E"; font-size: 11px; font-weight: 800; color: root.np-on-surface; horizontal-alignment: center; vertical-alignment: center; }
                                 }
-                                LikeButton { y: (parent.height - self.height) / 2; saved: root.player-saved; busy: root.player-like-busy; enabled: root.player-can-like; active-color: root.player-accent; icon-color: root.player-icon-tint; clicked => { if root.np-controls-visible { root.toggle-saved(2, 0); } } }
-                                RoundIconButton { y: (parent.height - self.height) / 2; d: Icons.more; icon-color: root.player-icon-tint; active-color: root.player-accent; label: "Opciones de la canción"; clicked => { if root.np-controls-visible { root.menu-x = self.absolute-position.x; root.menu-y = self.absolute-position.y; root.open-track-menu(2, 0); } } }
+                                Rectangle {
+                                    width: 40px;
+                                    LikeButton { x: 4px; y: (parent.height - self.height) / 2; saved: root.player-saved; busy: root.player-like-busy; enabled: root.player-can-like; active-color: root.np-accent; icon-color: root.np-on-surface; hover-bg: root.np-tonal-hover; clicked => { if root.np-controls-visible { root.toggle-saved(2, 0); } } }
+                                }
+                                M3IconButton {
+                                    y: (parent.height - self.height) / 2; width: 40px; height: 40px; icon-size: 20px;
+                                    d: Icons.more; tonal: false; icon-color: root.np-on-surface; label: "Opciones de la canción";
+                                    clicked => { if root.np-controls-visible { root.menu-x = self.absolute-position.x; root.menu-y = self.absolute-position.y; root.open-track-menu(2, 0); } }
+                                }
                             }
                         }
-                        HorizontalLayout {
-                            height: 24px; spacing: 8px;
+                        // Progreso: barra (ondulada M3 si está activa) con los tiempos debajo.
+                        VerticalLayout {
+                            spacing: 2px;
                             opacity: root.np-controls-visible ? 1 : 0;
                             animate opacity { duration: 350ms; easing: ease-in-out; }
-                            Text { width: 38px; text: root.elapsed; font-size: 12px; color: root.player-icon-tint; vertical-alignment: center; horizontal-alignment: right; }
-                            Scrubber { value <=> root.progress; wavy: root.pref-wavy-scrubber; marker-start: root.crossfade-start; bar-color: root.player-accent; accent: root.player-accent.brighter(0.15); track-color: root.player-accent.with-alpha(0.26); changed(v) => { if root.np-controls-visible { root.seek(v); } } }
-                            Text { width: 42px; text: root.remaining; font-size: 12px; color: root.player-icon-tint; vertical-alignment: center; }
+                            Rectangle {
+                                height: 24px;
+                                Scrubber {
+                                    y: (parent.height - self.height) / 2; width: parent.width;
+                                    value <=> root.progress; wavy: root.pref-wavy-scrubber;
+                                    wave-moving: root.playing && root.pref-motion && !root.pref-battery-saver;
+                                    marker-start: root.crossfade-start;
+                                    bar-color: root.np-accent; accent: root.np-accent; thumb-color: root.np-accent;
+                                    track-color: root.np-accent.with-alpha(0.24);
+                                    changed(v) => { if root.np-controls-visible { root.seek(v); } }
+                                }
+                            }
+                            HorizontalLayout {
+                                height: 16px;
+                                Text { text: root.elapsed; font-size: 12px; font-weight: 600; color: root.np-on-surface-sub; horizontal-alignment: left; vertical-alignment: center; }
+                                Text { text: root.remaining; font-size: 12px; font-weight: 600; color: root.np-on-surface-sub; horizontal-alignment: right; vertical-alignment: center; }
+                            }
                         }
+                        // Controles: aleatorio · anterior · play (forma expresiva) · siguiente · repetir
                         HorizontalLayout {
-                            height: 58px; alignment: center; spacing: 14px;
+                            height: 72px; alignment: center; spacing: root.width < 1100px ? 10px : 16px;
                             opacity: root.np-controls-visible ? 1 : 0;
                             animate opacity { duration: 350ms; easing: ease-in-out; }
-                            RoundIconButton { d: Icons.shuffle; label: "Aleatorio"; active: root.shuffle; bg-color: root.player-accent.darker(0.65); icon-color: root.player-icon-tint; active-color: root.player-accent; clicked => { if root.np-controls-visible { root.toggle-shuffle(); } } }
-                            RoundIconButton { d: Icons.prev; label: "Anterior"; bg-color: root.player-accent.darker(0.65); icon-color: root.player-icon-tint; active-color: root.player-accent; clicked => { if root.np-controls-visible { root.previous(); } } }
-                            PlayPauseButton { width: 48px; height: 48px; accent: root.player-accent; playing: root.playing; clicked => { if root.np-controls-visible { root.toggle-play(); } } }
-                            RoundIconButton { d: Icons.next; label: "Siguiente"; bg-color: root.player-accent.darker(0.65); icon-color: root.player-icon-tint; active-color: root.player-accent; clicked => { if root.np-controls-visible { root.next(); } } }
-                            RoundIconButton { d: Icons.repeat; label: "Repetir"; active: root.repeat-mode != "off"; bg-color: root.player-accent.darker(0.65); icon-color: root.player-icon-tint; active-color: root.player-accent; badge: root.repeat-mode == "one" ? "1" : ""; clicked => { if root.np-controls-visible { root.cycle-repeat(); } } }
+                            M3IconButton {
+                                y: 12px; width: 48px; height: 48px;
+                                d: Icons.shuffle; label: "Aleatorio"; active: root.shuffle; tonal: false;
+                                icon-color: root.np-on-surface; active-container: root.np-tonal-strong; active-icon-color: root.np-accent;
+                                clicked => { if root.np-controls-visible { root.toggle-shuffle(); } }
+                            }
+                            M3IconButton {
+                                y: 6px; width: 60px; height: 60px; icon-size: 24px; solid: true;
+                                d: Icons.prev-solid; label: "Anterior";
+                                container: root.np-tonal; icon-color: root.np-on-surface;
+                                clicked => { if root.np-controls-visible { root.previous(); } }
+                            }
+                            M3PlayButton {
+                                y: 2px; size: 68px;
+                                playing: root.playing; container: root.np-accent; icon-color: root.np-on-accent;
+                                clicked => { if root.np-controls-visible { root.toggle-play(); } }
+                            }
+                            M3IconButton {
+                                y: 6px; width: 60px; height: 60px; icon-size: 24px; solid: true;
+                                d: Icons.next-solid; label: "Siguiente";
+                                container: root.np-tonal; icon-color: root.np-on-surface;
+                                clicked => { if root.np-controls-visible { root.next(); } }
+                            }
+                            M3IconButton {
+                                y: 12px; width: 48px; height: 48px;
+                                d: Icons.repeat; label: "Repetir"; active: root.repeat-mode != "off"; tonal: false;
+                                badge: root.repeat-mode == "one" ? "1" : "";
+                                icon-color: root.np-on-surface; active-container: root.np-tonal-strong; active-icon-color: root.np-accent;
+                                clicked => { if root.np-controls-visible { root.cycle-repeat(); } }
+                            }
                         }
+                        // Volumen: silenciar · barra · nivel, todo en la misma línea.
                         HorizontalLayout {
-                            height: 30px; spacing: 8px; padding-left: 38px; padding-right: 38px;
+                            height: 36px; spacing: 6px; padding-left: 18px; padding-right: 18px;
                             opacity: root.np-controls-visible ? 1 : 0;
                             animate opacity { duration: 350ms; easing: ease-in-out; }
-                            IconPath { d: root.volume == 0 ? Icons.mute : Icons.volume; tint: root.player-icon-tint; y: (parent.height - self.height) / 2; }
-                            Scrubber { value <=> root.volume; bar-color: root.player-accent; accent: root.player-accent.brighter(0.15); track-color: root.player-accent.with-alpha(0.26); changed(v) => { if root.np-controls-visible { root.set-volume(v); } } }
+                            M3IconButton {
+                                width: 36px; height: 36px; icon-size: 18px; tonal: false;
+                                d: root.volume == 0 ? Icons.mute : Icons.volume-low; label: "Silenciar / restaurar";
+                                icon-color: root.np-on-surface-sub;
+                                clicked => {
+                                    if root.volume > 0 { root.audible-volume = root.volume; root.volume = 0; }
+                                    else { root.volume = root.audible-volume; }
+                                    root.set-volume(root.volume);
+                                }
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                Scrubber {
+                                    y: (parent.height - self.height) / 2; width: parent.width;
+                                    value <=> root.volume; bar-color: root.np-accent; accent: root.np-accent; thumb-color: root.np-accent;
+                                    track-color: root.np-accent.with-alpha(0.24);
+                                    changed(v) => { if root.np-controls-visible { root.set-volume(v); } }
+                                }
+                            }
+                            Rectangle {
+                                width: 36px;
+                                IconPath { x: 9px; y: (parent.height - self.height) / 2; d: Icons.volume; tint: root.np-on-surface-sub; }
+                            }
                         }
                     }
                 }
 
                 if root.lyrics-open || root.full-queue-open: Rectangle {
-                    x: parent.right-x; y: 0px; width: max(0px, parent.width - self.x); height: parent.height - 66px;
+                    x: parent.right-x; y: 0px; width: max(0px, parent.width - self.x); height: parent.height;
                     if root.lyrics-open: LyricsView {
                         width: parent.width; height: parent.height;
                         rows: root.lyric-rows; active: root.lyric-active; synced: root.lyrics-synced;
                         provider: root.lyrics-provider; message: root.lyrics-message;
                         show-translation: root.show-translation; has-translation: root.lyrics-has-translation;
                         same-language: root.lyrics-same-language; translating: root.lyrics-translating;
-                        accent: root.track-accent;
+                        accent: root.th-track-accent;
                         seek(i) => { root.seek-lyric(i); }
                         toggle-translation => { root.toggle-translation(); }
                     }
-                    if root.full-queue-open && !root.lyrics-open: VerticalLayout {
-                        spacing: 10px;
-                        HorizontalLayout {
-                            height: 34px; spacing: 10px;
-                            Text { horizontal-stretch: 1; text: "Cola de reproducción"; font-family: Theme.display-font; font-size: 21px; font-weight: 800; color: white; vertical-alignment: center; }
-                            Rectangle {
-                                width: 84px; height: 28px; y: 3px; border-radius: 14px;
-                                background: root.infinite-queue ? Theme.green.with-alpha(0.22) : (inf-full-ta.has-hover ? #ffffff18 : #ffffff0d);
-                                border-width: 1px; border-color: root.infinite-queue ? Theme.green-bright.with-alpha(0.65) : #ffffff1f;
-                                Text {
-                                    text: "∞ Infinito";
-                                    font-size: 11.5px; font-weight: 700;
-                                    color: root.infinite-queue ? Theme.green-bright : Theme.sub;
-                                    horizontal-alignment: center; vertical-alignment: center;
-                                }
-                                inf-full-ta := TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => { root.toggle-infinite-queue(); }
-                                }
-                            }
-                        }
-                        QueueList {
-                            vertical-stretch: 1;
-                            rows: root.queue-rows; editable: root.queue-editable;
-                            title: root.track-title; artist: root.track-artist; cover: root.track-cover; accent: root.player-accent;
-                            remove(i) => { root.queue-remove(i); }
-                            top(i) => { root.queue-top(i); }
-                            play(i) => { root.queue-play(i); }
-                            move(a, b) => { root.queue-move(a, b); }
-                        }
-                    }
-                }
-                np-pill := TouchArea {
-                    x: parent.panel-open ? (parent.right-x + (parent.width - parent.right-x - self.width) / 2) : (parent.width - self.width - 8px);
-                    animate x { duration: 280ms; easing: ease-in-out; }
-                    y: parent.height - 54px;
-                    width: 96px; height: 46px;
-                    opacity: root.np-controls-visible ? 1 : 0;
-                    animate opacity { duration: 350ms; easing: ease-in-out; }
-                    changed has-hover => { root.np-hover-pill = self.has-hover; }
-                    Rectangle {
-                        width: parent.width; height: parent.height; border-radius: 23px;
-                        background: @linear-gradient(135deg, root.tint.mix(root.track-accent, 0.65) 0%, root.tint.darker(0.12) 100%);
-                        border-width: 1px; border-color: root.track-accent.with-alpha(0.40);
-                        drop-shadow-blur: 20px; drop-shadow-color: #00000088;
-                    }
-                    HorizontalLayout {
-                        width: parent.width; height: parent.height;
-                        padding: 4px; spacing: 4px; alignment: center;
-                        Rectangle {
-                            width: 42px; height: 34px; border-radius: 17px;
-                            background: np-lyr-ta.has-hover ? #ffffff1c : transparent;
-                            animate background { duration: 150ms; }
-                            IconPath {
-                                d: Icons.lyrics;
-                                tint: root.lyrics-open ? Theme.green-bright : (np-lyr-ta.has-hover ? white : #ffffffcc);
-                                width: 18px; height: 18px;
-                                x: (parent.width - self.width) / 2;
-                                y: (parent.height - self.height) / 2 - (root.lyrics-open ? 2px : 0px);
-                            }
-                            if root.lyrics-open: Rectangle {
-                                width: 4px; height: 4px; border-radius: 2px;
-                                background: Theme.green-bright;
-                                x: (parent.width - self.width) / 2;
-                                y: parent.height - 6px;
-                            }
-                            np-lyr-ta := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => {
-                                    root.full-queue-open = false;
-                                    root.toggle-lyrics();
+                    if root.full-queue-open && !root.lyrics-open: Rectangle {
+                        border-radius: 28px; background: #00000026;
+                        border-width: 1px; border-color: root.np-accent.with-alpha(0.14);
+                        VerticalLayout {
+                            padding: 18px; spacing: 12px;
+                            HorizontalLayout {
+                                height: 36px; spacing: 10px;
+                                Text { horizontal-stretch: 1; text: "Cola de reproducción"; font-family: Theme.display-font; font-size: 22px; font-weight: 800; color: white; vertical-alignment: center; }
+                                Rectangle {
+                                    width: 96px; height: 32px; y: 2px; border-radius: root.infinite-queue ? 10px : 16px;
+                                    background: root.infinite-queue ? root.np-accent : (inf-full-ta.has-hover ? root.np-tonal-hover : root.np-tonal);
+                                    animate background, border-radius { duration: 200ms; }
+                                    Text {
+                                        text: "∞ Infinito";
+                                        font-size: 12px; font-weight: 700;
+                                        color: root.infinite-queue ? root.np-on-accent : root.np-on-surface;
+                                        horizontal-alignment: center; vertical-alignment: center;
+                                    }
+                                    inf-full-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.toggle-infinite-queue(); }
+                                    }
                                 }
                             }
-                        }
-                        Rectangle {
-                            width: 42px; height: 34px; border-radius: 17px;
-                            background: np-q-ta.has-hover ? #ffffff1c : transparent;
-                            animate background { duration: 150ms; }
-                            IconPath {
-                                d: Icons.queue;
-                                tint: (root.full-queue-open && !root.lyrics-open) ? Theme.green-bright : (np-q-ta.has-hover ? white : #ffffffcc);
-                                width: 18px; height: 18px;
-                                x: (parent.width - self.width) / 2;
-                                y: (parent.height - self.height) / 2 - (root.full-queue-open && !root.lyrics-open ? 2px : 0px);
-                            }
-                            if root.full-queue-open && !root.lyrics-open: Rectangle {
-                                width: 4px; height: 4px; border-radius: 2px;
-                                background: Theme.green-bright;
-                                x: (parent.width - self.width) / 2;
-                                y: parent.height - 6px;
-                            }
-                            np-q-ta := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => {
-                                    if root.lyrics-open { root.toggle-lyrics(); root.full-queue-open = true; }
-                                    else { root.full-queue-open = !root.full-queue-open; }
-                                }
+                            QueueList {
+                                vertical-stretch: 1;
+                                rows: root.queue-rows; editable: root.queue-editable;
+                                title: root.track-title; artist: root.track-artist; cover: root.track-cover; accent: root.np-accent;
+                                remove(i) => { root.queue-remove(i); }
+                                top(i) => { root.queue-top(i); }
+                                play(i) => { root.queue-play(i); }
+                                move(a, b) => { root.queue-move(a, b); }
                             }
                         }
                     }

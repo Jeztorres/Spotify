@@ -163,8 +163,9 @@ fn load_prefs(ui: &MainWindow) {
     ui.set_pref_wavy_scrubber(get("wavy_scrubber", false));
     ui.set_pref_bar_mode(get_i("bar_mode", 0).clamp(0, 2));
     let palette_max = slint::Model::row_count(&ui.get_bar_palette()) as i32 - 1;
-    ui.set_pref_bar_color(get_i("bar_color", 0).clamp(0, palette_max));
-    ui.set_pref_side_color(get_i("side_color", 0).clamp(0, palette_max));
+    // Tema único; si viene de una versión anterior se reutiliza el color del reproductor o de la barra lateral.
+    let legacy = match get_i("bar_color", 0) { 0 => get_i("side_color", 0), c => c };
+    ui.set_pref_app_color(get_i("app_color", legacy).clamp(0, palette_max));
     ui.set_pref_normalise(get("normalise", true));
     ui.set_pref_eq_enabled(get("eq_enabled", true));
     ui.set_pref_crossfade(get_f("crossfade_secs", 0.0));
@@ -202,8 +203,7 @@ fn save_prefs(ui: &MainWindow) {
         "tray": ui.get_pref_tray(),
         "wavy_scrubber": ui.get_pref_wavy_scrubber(),
         "bar_mode": ui.get_pref_bar_mode(),
-        "bar_color": ui.get_pref_bar_color(),
-        "side_color": ui.get_pref_side_color(),
+        "app_color": ui.get_pref_app_color(),
         "normalise": ui.get_pref_normalise(),
         "eq_enabled": ui.get_pref_eq_enabled(),
         "crossfade_secs": ui.get_pref_crossfade(),
