@@ -184,6 +184,27 @@ component LibraryRow inherits Rectangle {
     }
 }
 
+// Fila de menú con icono para el menú emergente de la barra del reproductor.
+component BarMenuRow inherits Rectangle {
+    in property <string> icon-d;
+    in property <string> label;
+    in property <bool> active;
+    in property <color> fg: white;
+    in property <color> icon-color: #ffffffd9;
+    in property <color> active-color: white;
+    in property <color> hover-bg: #ffffff1c;
+    callback clicked();
+    height: 38px; border-radius: 10px;
+    background: ta.has-hover ? root.hover-bg : transparent;
+    HorizontalLayout {
+        padding-left: 8px; padding-right: 8px; spacing: 12px;
+        IconPath { y: (parent.height - self.height) / 2; d: root.icon-d; tint: root.active ? root.active-color : root.icon-color; }
+        Text { text: root.label; color: root.active ? root.active-color : root.fg; font-size: 13px; font-weight: 600; vertical-alignment: center; horizontal-alignment: left; overflow: elide; }
+    }
+    accessible-role: button; accessible-label: root.label;
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
 component LikeButton inherits Rectangle {
     in property <bool> saved;
     in property <bool> busy;
@@ -1240,6 +1261,8 @@ export component MainWindow inherits Window {
     // ---- Color de la barra lateral (Inicio, Buscar, Tu biblioteca) ----
     // 0 = predeterminado (oscuro original); 1..N = color de `bar-palette`.
     in-out property <int> pref-side-color: 0;
+    // Menú emergente de la barra del reproductor (volumen y controles que no caben).
+    in-out property <bool> bar-pop-open: false;
     property <bool> side-custom: root.pref-side-color > 0 && root.pref-side-color < root.bar-palette.length;
     property <color> side-base: root.side-custom ? root.bar-palette[root.pref-side-color] : Theme.green-bright;
     property <float> side-lum: root.side-base.red * 0.299 + root.side-base.green * 0.587 + root.side-base.blue * 0.114;
@@ -2790,32 +2813,44 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Tres zonas independientes: los títulos nunca desplazan los controles.
+    // Barra del reproductor: tres zonas con anchos calculados por tamaño, para que nada se amontone.
+    //  · tier 0 (ancha):   letra · cola · conectar | volumen con barra | mini · vista completa
+    //  · tier 1 (media):   letra · cola · conectar | volumen · más  (volumen, mini y vista en el menú)
+    //  · tier 2 (estrecha): letra · cola | volumen · más           (también conectar va al menú)
     player-bar := Rectangle {
         x: root.sidebar-width + 16px; y: parent.height - 110px; height: 94px;
         // Con el panel derecho abierto la barra termina antes de él (no lo tapa); al cerrarlo vuelve a todo el ancho.
         width: parent.width - self.x - 26px - (root.right-panel != 0 && !root.now-playing-open ? root.right-panel-width - 10px : 0px);
         animate width { duration: 260ms; easing: ease-in-out; }
-        border-radius: 14px;
+        border-radius: 16px;
         background: root.player-bar-bg;
         border-width: 1px; border-color: root.bar-border;
         drop-shadow-blur: 24px; drop-shadow-color: #00000088;
-        // Barra estrecha: sin control de volumen (sigue en la pantalla completa y en Conectar).
-        property <bool> narrow: self.width < 820px;
-        property <length> info-width: min(280px, self.width * (self.narrow ? 0.28 : 0.26));
-        property <length> tools-width: self.narrow ? 256px : (root.width < 1250px ? 344px : 384px);
+        property <int> tier: self.width >= 1040px ? 0 : (self.width >= 780px ? 1 : 2);
+        property <length> pad: 14px;
+        property <length> info-width: self.tier == 2 ? max(170px, self.width * 0.30) : min(320px, self.width * 0.28);
+        property <length> tools-width: self.tier == 0 ? 368px : (self.tier == 1 ? 200px : 164px);
+        property <length> center-space: self.width - self.info-width - self.tools-width - 2 * self.pad;
+        property <length> center-width: min(600px, self.center-space - 24px);
+        property <bool> show-times: self.center-width >= 270px;
         TouchArea { }
+
+        // ---- Izquierda: portada, título/artista, me gusta y opciones ----
         HorizontalLayout {
-            x: 12px; y: 16px; width: parent.info-width - 56px; height: 60px; spacing: 12px;
-            Cover { width: 52px; height: 52px; source: root.track-cover; corner: 5px; }
+            x: parent.pad; y: 0; width: parent.info-width; height: parent.height;
+            spacing: 10px;
+            Rectangle {
+                width: player-bar.tier == 2 ? 46px : 56px;
+                Cover { y: (parent.height - self.height) / 2; width: parent.width; height: parent.width; source: root.track-cover; corner: 8px; drop-shadow-blur: 10px; drop-shadow-color: #00000066; }
+            }
             VerticalLayout {
-                alignment: center; spacing: 4px;
-                Text { text: root.track-title; font-size: 14px; font-weight: 700; overflow: elide; color: root.bar-fg; }
+                horizontal-stretch: 1; min-width: 40px; alignment: center; spacing: 3px;
+                Text { text: root.track-title; font-size: 14px; font-weight: 700; overflow: elide; color: root.bar-fg; horizontal-alignment: left; }
                 Rectangle {
                     height: 16px;
                     bar-artist-text := Text {
                         x: 0; y: 0; width: min(self.preferred-width, parent.width); height: parent.height;
-                        text: root.track-artist + (root.track-album != "" ? " · " + root.track-album : "");
+                        text: root.track-artist + (root.track-album != "" && player-bar.tier == 0 ? " · " + root.track-album : "");
                         font-size: 12px; vertical-alignment: center; overflow: elide;
                         color: bar-artist-ta.has-hover ? root.bar-fg : root.bar-fg-sub;
                     }
@@ -2831,31 +2866,44 @@ export component MainWindow inherits Window {
                     }
                 }
             }
+            Rectangle {
+                width: 32px;
+                LikeButton { y: (parent.height - self.height) / 2; saved: root.player-saved; busy: root.player-like-busy; enabled: root.player-can-like; active-color: root.bar-icon-active; icon-color: root.bar-icon; hover-bg: root.bar-hover-bg; clicked => { root.toggle-saved(2, 0); } }
+            }
+            Rectangle {
+                width: 32px;
+                RoundIconButton { y: (parent.height - self.height) / 2; width: 32px; height: 32px; d: Icons.more; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Opciones de la canción"; clicked => { root.menu-x = self.absolute-position.x; root.menu-y = self.absolute-position.y; root.open-track-menu(2, 0); } }
+            }
         }
-        RoundIconButton { x: parent.info-width - 38px; y: 30px; d: Icons.more; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Opciones de la canción"; clicked => { root.menu-x = self.absolute-position.x; root.menu-y = self.absolute-position.y; root.open-track-menu(2, 0); } }
+
+        // ---- Centro: controles y progreso ----
         VerticalLayout {
-            width: min(560px, parent.width - parent.info-width - parent.tools-width - 24px);
-            x: parent.info-width + (parent.width - parent.info-width - parent.tools-width - self.width) / 2; y: 8px;
-            height: 76px; spacing: 6px;
+            width: parent.center-width;
+            x: parent.pad + parent.info-width + (parent.center-space - self.width) / 2;
+            y: 10px; height: 74px; spacing: 6px;
             HorizontalLayout {
-                height: 40px; alignment: center; spacing: 12px;
-                RoundIconButton { d: Icons.shuffle; active: root.shuffle; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Aleatorio"; clicked => { root.toggle-shuffle(); } }
-                RoundIconButton { d: Icons.prev; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Anterior"; clicked => { root.previous(); } }
-                PlayPauseButton { width: 38px; height: 38px; accent: root.bar-custom || root.pref-bar-mode != 0 ? root.bar-icon-active : white; icon-color: root.bar-light ? white : #121214; playing: root.playing; clicked => { root.toggle-play(); } }
-                RoundIconButton { d: Icons.next; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Siguiente"; clicked => { root.next(); } }
-                RoundIconButton { d: Icons.repeat; active: root.repeat-mode != "off"; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; badge: root.repeat-mode == "one" ? "1" : ""; label: "Repetir"; clicked => { root.cycle-repeat(); } }
+                height: 40px; alignment: center; spacing: player-bar.center-width < 260px ? 6px : 14px;
+                RoundIconButton { y: 3px; d: Icons.shuffle; active: root.shuffle; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Aleatorio"; clicked => { root.toggle-shuffle(); } }
+                RoundIconButton { y: 3px; d: Icons.prev; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Anterior"; clicked => { root.previous(); } }
+                PlayPauseButton { width: 40px; height: 40px; accent: root.bar-custom || root.pref-bar-mode != 0 ? root.bar-icon-active : white; icon-color: root.bar-light ? white : #121214; playing: root.playing; clicked => { root.toggle-play(); } }
+                RoundIconButton { y: 3px; d: Icons.next; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Siguiente"; clicked => { root.next(); } }
+                RoundIconButton { y: 3px; d: Icons.repeat; active: root.repeat-mode != "off"; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; badge: root.repeat-mode == "one" ? "1" : ""; label: "Repetir"; clicked => { root.cycle-repeat(); } }
             }
             HorizontalLayout {
-                height: 20px; spacing: 8px;
-                Text { width: 38px; text: root.elapsed; font-size: 11px; color: root.bar-fg-sub; horizontal-alignment: right; vertical-alignment: center; }
-                Scrubber { value <=> root.progress; wavy: root.pref-wavy-scrubber; wave-moving: root.playing && root.pref-motion && !root.pref-battery-saver; marker-start: root.crossfade-start; bar-color: root.bar-icon-active; accent: root.bar-icon-active; thumb-color: root.bar-icon-active; track-color: root.bar-track; changed(v) => { root.seek(v); } }
-                Text { width: 38px; text: root.remaining; font-size: 11px; color: root.bar-fg-sub; vertical-alignment: center; }
+                height: 24px; spacing: 10px;
+                if player-bar.show-times: Text { width: 38px; text: root.elapsed; font-size: 11px; color: root.bar-fg-sub; horizontal-alignment: right; vertical-alignment: center; }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    Scrubber { y: (parent.height - self.height) / 2; width: parent.width; value <=> root.progress; wavy: root.pref-wavy-scrubber; wave-moving: root.playing && root.pref-motion && !root.pref-battery-saver; marker-start: root.crossfade-start; bar-color: root.bar-icon-active; accent: root.bar-icon-active; thumb-color: root.bar-icon-active; track-color: root.bar-track; changed(v) => { root.seek(v); } }
+                }
+                if player-bar.show-times: Text { width: 38px; text: root.remaining; font-size: 11px; color: root.bar-fg-sub; horizontal-alignment: left; vertical-alignment: center; }
             }
         }
+
+        // ---- Derecha: herramientas (todas centradas en la misma línea) ----
         HorizontalLayout {
-            x: parent.width - parent.tools-width + 12px; y: 30px;
-            width: parent.tools-width - 24px; height: 32px; spacing: 4px; alignment: end;
-            LikeButton { saved: root.player-saved; busy: root.player-like-busy; enabled: root.player-can-like; active-color: root.bar-icon-active; icon-color: root.bar-icon; hover-bg: root.bar-hover-bg; clicked => { root.toggle-saved(2, 0); } }
+            x: parent.width - parent.tools-width - parent.pad + 8px; y: (parent.height - 34px) / 2;
+            width: parent.tools-width - 8px; height: 34px; spacing: 4px; alignment: end;
             RoundIconButton {
                 d: Icons.lyrics; label: "Letra";
                 active: root.now-playing-open ? root.lyrics-open : root.right-panel == 1;
@@ -2887,18 +2935,85 @@ export component MainWindow inherits Window {
                     }
                 }
             }
-            RoundIconButton { d: Icons.connect; label: "Conectar a un dispositivo"; active: root.connect-remote || root.connect-open; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; clicked => { root.connect-open = !root.connect-open; if root.connect-open { root.open-connect(); } } }
-            if !player-bar.narrow: RoundIconButton {
-                d: root.volume == 0 ? Icons.mute : Icons.volume; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Silenciar / restaurar";
+            if player-bar.tier < 2: RoundIconButton { d: Icons.connect; label: "Conectar a un dispositivo"; active: root.connect-remote || root.connect-open; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; clicked => { root.connect-open = !root.connect-open; if root.connect-open { root.open-connect(); } } }
+            if player-bar.tier == 0: Rectangle { width: 9px; Rectangle { x: 4px; y: 8px; width: 1px; height: parent.height - 16px; background: root.bar-track; } }
+            // Volumen: icono y barra en la misma línea que el resto (antes la barra quedaba arriba).
+            RoundIconButton {
+                d: root.volume == 0 ? Icons.mute : Icons.volume; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg;
+                active: player-bar.tier > 0 && root.bar-pop-open;
+                label: player-bar.tier == 0 ? "Silenciar / restaurar" : "Volumen";
                 clicked => {
-                    if root.volume > 0 { root.audible-volume = root.volume; root.volume = 0; }
-                    else { root.volume = root.audible-volume; }
-                    root.set-volume(root.volume);
+                    if player-bar.tier > 0 {
+                        root.bar-pop-open = !root.bar-pop-open;
+                    } else {
+                        if root.volume > 0 { root.audible-volume = root.volume; root.volume = 0; }
+                        else { root.volume = root.audible-volume; }
+                        root.set-volume(root.volume);
+                    }
                 }
             }
-            if !player-bar.narrow: Scrubber { value <=> root.volume; width: root.width < 1250px ? 60px : 80px; bar-color: root.bar-icon-active; accent: root.bar-icon-active; thumb-color: root.bar-icon-active; track-color: root.bar-track; changed(v) => { root.set-volume(v); } }
-            RoundIconButton { d: Icons.mini-player; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Mini reproductor flotante"; clicked => { root.toggle-mini-player(); } }
-            RoundIconButton { d: Icons.expand; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Vista de reproducción"; clicked => { root.open-now-playing(); } }
+            if player-bar.tier == 0: Rectangle {
+                width: 96px;
+                Scrubber { y: (parent.height - self.height) / 2; width: parent.width; value <=> root.volume; bar-color: root.bar-icon-active; accent: root.bar-icon-active; thumb-color: root.bar-icon-active; track-color: root.bar-track; changed(v) => { root.set-volume(v); } }
+            }
+            if player-bar.tier == 0: Rectangle { width: 9px; Rectangle { x: 4px; y: 8px; width: 1px; height: parent.height - 16px; background: root.bar-track; } }
+            if player-bar.tier == 0: RoundIconButton { d: Icons.mini-player; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Mini reproductor flotante"; clicked => { root.toggle-mini-player(); } }
+            if player-bar.tier == 0: RoundIconButton { d: Icons.expand; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Vista de reproducción"; clicked => { root.open-now-playing(); } }
+            if player-bar.tier > 0: RoundIconButton { d: Icons.settings; active: root.bar-pop-open; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Más controles"; clicked => { root.bar-pop-open = !root.bar-pop-open; } }
+        }
+    }
+
+    // ---- Menú emergente de la barra (tamaños medio y estrecho): volumen y controles que no caben ----
+    if root.bar-pop-open && player-bar.tier > 0: TouchArea {
+        width: parent.width; height: parent.height;
+        clicked => { root.bar-pop-open = false; }
+    }
+    if root.bar-pop-open && player-bar.tier > 0: Rectangle {
+        width: 268px;
+        height: pop-col.preferred-height;
+        x: player-bar.x + player-bar.width - self.width - 8px;
+        y: player-bar.y - self.height - 10px;
+        border-radius: 16px;
+        background: root.player-bar-bg;
+        border-width: 1px; border-color: root.bar-border;
+        drop-shadow-blur: 24px; drop-shadow-color: #00000099;
+        TouchArea { }
+        pop-col := VerticalLayout {
+            padding: 12px; spacing: 6px;
+            Text { text: root.pref-lang == "en" ? "Volume" : "Volumen"; color: root.bar-fg-sub; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; horizontal-alignment: left; }
+            HorizontalLayout {
+                height: 34px; spacing: 8px;
+                RoundIconButton {
+                    d: root.volume == 0 ? Icons.mute : Icons.volume; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; label: "Silenciar / restaurar";
+                    clicked => {
+                        if root.volume > 0 { root.audible-volume = root.volume; root.volume = 0; }
+                        else { root.volume = root.audible-volume; }
+                        root.set-volume(root.volume);
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    Scrubber { y: (parent.height - self.height) / 2; width: parent.width; value <=> root.volume; bar-color: root.bar-icon-active; accent: root.bar-icon-active; thumb-color: root.bar-icon-active; track-color: root.bar-track; changed(v) => { root.set-volume(v); } }
+                }
+                Text { width: 36px; text: round(root.volume * 100) + "%"; color: root.bar-fg-sub; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+            }
+            Rectangle { height: 1px; background: root.bar-track; }
+            if player-bar.tier == 2: BarMenuRow {
+                icon-d: Icons.connect; label: root.pref-lang == "en" ? "Connect to a device" : "Conectar a un dispositivo";
+                active: root.connect-remote || root.connect-open;
+                fg: root.bar-fg; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-bg: root.bar-hover-bg;
+                clicked => { root.bar-pop-open = false; root.connect-open = !root.connect-open; if root.connect-open { root.open-connect(); } }
+            }
+            BarMenuRow {
+                icon-d: Icons.mini-player; label: root.pref-lang == "en" ? "Mini player" : "Mini reproductor";
+                fg: root.bar-fg; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-bg: root.bar-hover-bg;
+                clicked => { root.bar-pop-open = false; root.toggle-mini-player(); }
+            }
+            BarMenuRow {
+                icon-d: Icons.expand; label: root.pref-lang == "en" ? "Full screen view" : "Vista de reproducción";
+                fg: root.bar-fg; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-bg: root.bar-hover-bg;
+                clicked => { root.bar-pop-open = false; root.open-now-playing(); }
+            }
         }
     }
 
