@@ -125,21 +125,73 @@ pub fn fill_cards(app: &mut App, which: Cards, items: Vec<(String, String, Optio
 
 /// Los fijados aparecen primero; cada fila conserva su URI aunque cambie de posición.
 pub fn show_playlists(app: &mut App, playlists: Vec<Playlist>) {
-    let covers:std::collections::HashMap<String,Image>=(0..app.library.row_count()).filter_map(|i|app.library.row_data(i)).map(|row|(row.uri.to_string(),row.cover)).collect();
-    app.playlists=playlists;
-    let liked=format!("spotify:user:{}:collection",app.username.as_deref().unwrap_or(""));
-    let mut entries=vec![LibraryEntry{uri:liked.clone().into(),title:"Canciones que te gustan".into(),subtitle:"Playlist".into(),cover:Image::default(),
-        pinned:spotify_core::catalog::pin_position(&app.catalog.pins,&liked).is_some(),active:false,special:true}];
+    app.playlists = playlists;
+    rebuild_library(app);
+}
+
+/// Reconstruye «Tu biblioteca»: Canciones que te gustan, playlists (marcando las tuyas),
+/// álbumes guardados y artistas seguidos. `kind` alimenta los filtros de la barra lateral.
+pub fn rebuild_library(app: &mut App) {
+    let covers: std::collections::HashMap<String, Image> = (0..app.library.row_count())
+        .filter_map(|i| app.library.row_data(i))
+        .map(|row| (row.uri.to_string(), row.cover))
+        .collect();
+    let me = app.username.clone().unwrap_or_default();
+    let pinned = |uri: &str| spotify_core::catalog::pin_position(&app.catalog.pins, uri).is_some();
+    let liked = format!("spotify:user:{me}:collection");
+    let mut entries = vec![LibraryEntry {
+        uri: liked.clone().into(), title: "Canciones que te gustan".into(), subtitle: "Playlist".into(),
+        cover: Image::default(), pinned: pinned(&liked), active: false, special: true, kind: "liked".into(),
+    }];
     entries.extend(app.playlists.iter().map(|p| {
-        let owner=p.owner.as_ref().and_then(|o|o.display_name.as_deref()).unwrap_or("");
-        LibraryEntry{uri:p.uri.clone().into(),title:p.name.clone().into(),subtitle:if owner.is_empty(){"Playlist".into()}else{format!("Playlist · {owner}").into()},
-            cover:covers.get(&p.uri).cloned().unwrap_or_default(),pinned:spotify_core::catalog::pin_position(&app.catalog.pins,&p.uri).is_some(),active:false,special:false}
+        let owner_id = p.owner.as_ref().map(|o| o.id.as_str()).unwrap_or("");
+        let owner = p.owner.as_ref().and_then(|o| o.display_name.as_deref()).unwrap_or("");
+        let mine = !me.is_empty() && owner_id == me;
+        LibraryEntry {
+            uri: p.uri.clone().into(), title: p.name.clone().into(),
+            subtitle: if owner.is_empty() { "Playlist".into() } else { format!("Playlist · {owner}").into() },
+            cover: covers.get(&p.uri).cloned().unwrap_or_default(), pinned: pinned(&p.uri),
+            active: false, special: false, kind: if mine { "own" } else { "playlist" }.into(),
+        }
     }));
-    entries.sort_by_key(|entry|spotify_core::catalog::pin_position(&app.catalog.pins,entry.uri.as_str()).unwrap_or(usize::MAX));
-    app.library.set_vec(entries);highlight_library(app,None);
-    let jobs:Vec<_>=app.playlists.iter().filter_map(|p|p.image_url().map(|u|(p.uri.clone(),u.to_owned()))).collect();
-    for(uri,url)in jobs{load_library_cover(app,uri,url);}
+    entries.extend(app.lib_albums.iter().map(|p| LibraryEntry {
+        uri: p.uri.clone().into(), title: p.name.clone().into(),
+        subtitle: match &p.artist_name { Some(a) => format!("Álbum · {a}"), None => "Álbum".into() }.into(),
+        cover: covers.get(&p.uri).cloned().unwrap_or_default(), pinned: pinned(&p.uri),
+        active: false, special: false, kind: "album".into(),
+    }));
+    entries.extend(app.lib_artists.iter().map(|a| LibraryEntry {
+        uri: a.uri.clone().into(), title: a.name.clone().into(), subtitle: "Artista".into(),
+        cover: covers.get(&a.uri).cloned().unwrap_or_default(), pinned: pinned(&a.uri),
+        active: false, special: false, kind: "artist".into(),
+    }));
+    entries.sort_by_key(|entry| spotify_core::catalog::pin_position(&app.catalog.pins, entry.uri.as_str()).unwrap_or(usize::MAX));
+    app.library.set_vec(entries);
+    highlight_library(app, None);
+    let mut jobs: Vec<(String, String, bool)> = app.playlists.iter()
+        .filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))).collect();
+    jobs.extend(app.lib_albums.iter().filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))));
+    jobs.extend(app.lib_artists.iter().filter_map(|a| {
+        a.images.as_ref().and_then(|i| i.first()).map(|i| (a.uri.clone(), i.url.clone(), true))
+    }));
+    for (uri, url, round) in jobs {
+        if covers.get(&uri).is_some_and(|c| c.size().width > 0) { continue; }
+        if round { load_library_avatar(app, uri, url); } else { load_library_cover(app, uri, url); }
+    }
     fill_missing_covers(app);
+}
+
+/// Foto redonda de un artista seguido.
+fn load_library_avatar(app: &App, uri: String, url: String) {
+    load_cover(app, &url, 96, move |_, app, d| {
+        for i in 0..app.library.row_count() {
+            if let Some(mut row) = app.library.row_data(i).filter(|r| r.uri.as_str() == uri) {
+                row.cover = to_image(&images::circle(d));
+                app.library.set_row_data(i, row);
+                break;
+            }
+        }
+    });
 }
 
 fn load_library_cover(app: &App, uri: String, url: String) {
@@ -205,11 +257,14 @@ fn fill_missing_covers(app: &mut App) {
 }
 pub fn open_library_row(ui:&MainWindow,app:&mut App,row:usize){
     let Some(entry)=app.library.row_data(row)else{return;};
-    if entry.special{open_source(ui,app,Source::Liked);}else if let Some(p)=app.playlists.iter().find(|p|p.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::Playlist(p));}
+    if entry.special{open_source(ui,app,Source::Liked);}
+    else if entry.kind=="album"{if let Some(p)=app.lib_albums.iter().find(|p|p.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::Playlist(p));}}
+    else if entry.kind=="artist"{if let Some(a)=app.lib_artists.iter().find(|a|a.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::ArtistTop(ArtistItem::new(&a.id,&a.name)));}}
+    else if let Some(p)=app.playlists.iter().find(|p|p.uri==entry.uri.as_str()).cloned(){open_source(ui,app,Source::Playlist(p));}
 }
 fn highlight_library(app:&App,_active:Option<usize>){
     for i in 0..app.library.row_count(){if let Some(mut row)=app.library.row_data(i){
-        let active=match &app.current_source{Some(Source::Liked)=>row.special,Some(Source::Playlist(p))=>row.uri.as_str()==p.uri,_=>false};
+        let active=match &app.current_source{Some(Source::Liked)=>row.special,Some(Source::Playlist(p))=>row.uri.as_str()==p.uri,Some(Source::ArtistTop(a))=>row.kind=="artist"&&row.uri.as_str().ends_with(&a.id),_=>false};
         if row.active!=active{row.active=active;app.library.set_row_data(i,row);}
     }}
 }

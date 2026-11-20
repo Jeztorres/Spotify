@@ -89,7 +89,7 @@ export global I18n {
     in-out property <string> btn-view-source: "Ver fuente";
 }
 
-export struct LibraryEntry { uri: string, title: string, subtitle: string, cover: image, pinned: bool, active: bool, special: bool }
+export struct LibraryEntry { uri: string, title: string, subtitle: string, cover: image, pinned: bool, active: bool, special: bool, kind: string }
 export struct QueueRow { title: string, artist: string, tag: string, duration: string, cover: image }
 export struct CardEntry { title: string, subtitle: string, cover: image }
 export struct TrackEntry { index: int, uri: string, cover: image, title: string, artist: string, album: string, duration: string, playcount: string, explicit: bool, playing: bool, saved: bool, like-busy: bool }
@@ -164,7 +164,7 @@ component LibraryRow inherits Rectangle {
             background: @linear-gradient(135deg, rgb(70, 50, 200) 0%, Theme.green 100%);
             Text { text: "♥"; color: white; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
         }
-        if !root.entry.special: Cover { width: 40px; height: 40px; source: root.entry.cover; }
+        if !root.entry.special: Cover { width: 40px; height: 40px; source: root.entry.cover; corner: root.entry.kind == "artist" ? 20px : 6px; }
         VerticalLayout {
             alignment: center;
             spacing: 2px;
@@ -367,6 +367,8 @@ component TrackTableHeader inherits Rectangle {
 
 component TrackRow inherits Rectangle {
     in property <TrackEntry> t;
+    // Fondo sólido de los botones (+ y ⋯): el color de la página, no negro.
+    in property <color> button-bg: #26262a;
     in property <bool> popular: false;
     callback clicked();
     callback open-artist(length, length);
@@ -470,8 +472,8 @@ component TrackRow inherits Rectangle {
     }
     Text { x: TrackColumns.duration-x(root.width); width: 48px; height: parent.height; text: root.t.duration; horizontal-alignment: right; vertical-alignment: center; font-size: 12px; color: #ffffffbb; }
     LikeButton { x: parent.width - 110px; y: 14px; saved: root.t.saved; busy: root.t.like-busy; enabled: root.t.uri != ""; clicked => { root.like(); } }
-    RoundIconButton { x: parent.width - 74px; y: 14px; d: Icons.plus; label: "Agregar a playlist"; enabled: root.t.uri != ""; clicked => { root.add-playlist(self.absolute-position.x, self.absolute-position.y + self.height); } }
-    RoundIconButton { x: parent.width - 38px; y: 14px; d: Icons.more; label: "Más opciones de canción"; clicked => { root.context(self.absolute-position.x, self.absolute-position.y + self.height); } }
+    RoundIconButton { x: parent.width - 74px; y: 14px; bg-color: root.button-bg; icon-color: #ffffffe0; d: Icons.plus; label: "Agregar a playlist"; enabled: root.t.uri != ""; clicked => { root.add-playlist(self.absolute-position.x, self.absolute-position.y + self.height); } }
+    RoundIconButton { x: parent.width - 38px; y: 14px; bg-color: root.button-bg; icon-color: #ffffffe0; d: Icons.more; label: "Más opciones de canción"; clicked => { root.context(self.absolute-position.x, self.absolute-position.y + self.height); } }
 }
 
 // Rejilla adaptable: tantas columnas como quepan (mín. 190 px).
@@ -1381,6 +1383,10 @@ export component MainWindow inherits Window {
     property <color> bar-track: root.bar-light ? #0000001f : #ffffff2e;
     property <color> bar-border: root.bar-light ? #00000014 : root.bar-accent.with-alpha(0.28);
     property <color> surface-tint: root.page >= 2 ? root.th-list-tint : root.th-tint;
+    // Botones de fila y menús «Más opciones»: sólidos con el color de la página.
+    property <color> row-button-bg: root.page-bg.mix(#ffffff, 0.84);
+    property <color> menu-bg: root.page-bg.mix(#121214, 0.62);
+    property <color> menu-border: root.page-bg.mix(#ffffff, 0.70).with-alpha(0.7);
     // Color de fondo de la página abierta (perfil de artista, playlist, Inicio…): el panel derecho lo comparte.
     property <color> page-bg: root.page == 3 ? root.artist-base : root.surface-tint;
     in property <bool> is-macos: false;
@@ -1403,6 +1409,14 @@ export component MainWindow inherits Window {
     in-out property <int> page: 0; // 0 inicio · 1 búsqueda · 2 lista
     // Configuración: 0 Apariencia · 1 Audio · 2 General · 3 Cuenta
     in-out property <int> settings-tab: 0;
+    // Filtro de «Tu biblioteca»: 0 todo · 1 playlists · 2 tus playlists · 3 álbumes · 4 artistas
+    in-out property <int> library-filter: 0;
+    property <[string]> library-filters: [
+        "Playlists",
+        root.pref-lang == "en" ? "Your playlists" : "Tus playlists",
+        root.pref-lang == "en" ? "Albums" : "Álbumes",
+        root.pref-lang == "en" ? "Artists" : "Artistas",
+    ];
     property <[{icon: string, label: string}]> settings-tabs: [
         { icon: Icons.palette, label: root.pref-lang == "en" ? "Appearance" : "Apariencia" },
         { icon: Icons.volume, label: "Audio" },
@@ -1598,13 +1612,59 @@ export component MainWindow inherits Window {
                         Rectangle { horizontal-stretch: 1; }
                         RoundIconButton { d: Icons.plus; width: 28px; height: 28px; bg-color: root.side-button-bg; active-color: root.side-accent; clicked => { root.new-playlist(); } }
                     }
+                    // Filtros como en Spotify: Playlists · Tus playlists · Álbumes · Artistas.
+                    Flickable {
+                        height: 40px;
+                        viewport-width: max(self.width, lib-chips.preferred-width + 28px);
+                        lib-chips := HorizontalLayout {
+                            x: 14px; y: 2px; height: 32px; spacing: 0px; alignment: start;
+                            if root.library-filter != 0: Rectangle {
+                                width: 40px;
+                                Rectangle {
+                                x: 0; width: 32px; height: 32px; border-radius: 16px;
+                                background: lib-x-ta.has-hover ? #ffffff30 : #ffffff1a;
+                                IconPath { x: 8px; y: 8px; width: 16px; height: 16px; d: Icons.close; tint: white; }
+                                accessible-role: button; accessible-label: "Quitar filtro";
+                                lib-x-ta := TouchArea { mouse-cursor: pointer; clicked => { root.library-filter = 0; } }
+                                }
+                            }
+                            // Cada chip lleva su separación dentro: los ocultos no dejan hueco.
+                            for f[fi] in root.library-filters: Rectangle {
+                                visible: root.library-filter == 0 || root.library-filter == fi + 1;
+                                width: self.visible ? lib-chip-text.preferred-width + 34px : 0px;
+                                Rectangle {
+                                x: 0; width: parent.width - 8px; height: 32px; border-radius: 16px;
+                                background: root.library-filter == fi + 1 ? root.side-accent.mix(Theme.green-bright, root.side-custom ? 1 : 0) : (lib-chip-ta.has-hover ? #ffffff2a : #ffffff17);
+                                animate background { duration: 140ms; }
+                                lib-chip-text := Text {
+                                    text: f; font-size: 13px; font-weight: 600;
+                                    color: root.library-filter == fi + 1 ? #121214 : white;
+                                    horizontal-alignment: center; vertical-alignment: center;
+                                }
+                                accessible-role: button; accessible-label: f;
+                                lib-chip-ta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.library-filter = root.library-filter == fi + 1 ? 0 : fi + 1; }
+                                }
+                                }
+                            }
+                        }
+                    }
                     ScrollView {
                         VerticalLayout {
                             padding-left: 8px;
                             padding-right: 8px;
-                            spacing: 2px;
+                            spacing: 0px;
                             for entry[i] in root.library: LibraryRow {
                                 entry: entry;
+                                // Filtro activo: las filas que no corresponden se ocultan sin dejar hueco.
+                                property <bool> shown: root.library-filter == 0
+                                    || (root.library-filter == 1 && (entry.kind == "playlist" || entry.kind == "own" || entry.kind == "liked"))
+                                    || (root.library-filter == 2 && entry.kind == "own")
+                                    || (root.library-filter == 3 && entry.kind == "album")
+                                    || (root.library-filter == 4 && entry.kind == "artist");
+                                visible: self.shown;
+                                height: self.shown ? 58px : 0px;
                                 accent: root.side-custom ? root.side-accent : Theme.green-bright;
                                 clicked => { root.open-library(i); }
                                 context(x, y) => { root.menu-x = x; root.menu-y = y; root.library-context(i); }
@@ -1729,7 +1789,7 @@ export component MainWindow inherits Window {
                             VerticalLayout {
                                 spacing: 4px; horizontal-stretch: 1.5; alignment: start;
                                 SectionTitle { text: "Canciones"; }
-                                for t[i] in root.search-tracks: TrackRow {
+                                for t[i] in root.search-tracks: TrackRow { button-bg: root.row-button-bg;
                                     visible: i < 4; height: i < 4 ? 60px : 0px;
                                     t: t; clicked => { root.play-search-track(i); } open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(1, i); } open-album => { root.open-track-album(1, i); } add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(1, i); } context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(1, i); } like => { root.toggle-saved(1, i); }
                                 }
@@ -1745,7 +1805,7 @@ export component MainWindow inherits Window {
                         // Canciones: lista completa con «Cargar más».
                         if root.searching && root.search-filter == 1 && root.search-tracks.length > 0: TrackTableHeader { }
                         if root.searching && root.search-filter == 1: VerticalLayout {
-                            for t[i] in root.search-tracks: TrackRow { t: t; clicked => { root.play-search-track(i); } open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(1, i); } open-album => { root.open-track-album(1, i); } add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(1, i); } context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(1, i); } like => { root.toggle-saved(1, i); } }
+                            for t[i] in root.search-tracks: TrackRow { button-bg: root.row-button-bg; t: t; clicked => { root.play-search-track(i); } open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(1, i); } open-album => { root.open-track-album(1, i); } add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(1, i); } context(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-menu(1, i); } like => { root.toggle-saved(1, i); } }
                         }
                         if root.searching && root.search-filter == 1 && root.search-more-tracks: HorizontalLayout {
                             alignment: center;
@@ -1969,7 +2029,7 @@ export component MainWindow inherits Window {
                         x: 0; y: i * 60px; width: rows-box.width; height: 60px;
                         if i < rows-box.visible-count
                             && rows-box.y + (i + 1) * 60px > -list-scroll.content-y - 400px
-                            && rows-box.y + i * 60px < -list-scroll.content-y + list-scroll.visible-height + 400px: TrackRow {
+                            && rows-box.y + i * 60px < -list-scroll.content-y + list-scroll.visible-height + 400px: TrackRow { button-bg: root.row-button-bg;
                             width: parent.width; t: t;
                             clicked => { root.play-track(i); }
                             open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(0, i); }
@@ -2009,7 +2069,7 @@ export component MainWindow inherits Window {
                     }
                     for t[i] in root.suggestion-rows: HorizontalLayout {
                         spacing: 8px;
-                        TrackRow { t: t; clicked => { root.play-suggestion(i); }
+                        TrackRow { button-bg: root.row-button-bg; t: t; clicked => { root.play-suggestion(i); }
                             open-artist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-track-artist(3, i); }
                             open-album => { root.open-track-album(3, i); }
                             add-playlist(x, y) => { root.menu-x = x; root.menu-y = y; root.open-add-playlist(3, i); }
@@ -2158,7 +2218,7 @@ export component MainWindow inherits Window {
                                     if root.tracks.length > 0: TrackTableHeader { popular: true; }
                                     VerticalLayout {
                                         spacing: 0px;
-                                        for t[i] in root.tracks: TrackRow {
+                                        for t[i] in root.tracks: TrackRow { button-bg: root.row-button-bg;
                                             popular: true;
                                             visible: root.artist-show-all || i < 5; height: root.artist-show-all || i < 5 ? 60px : 0px;
                                             t: t; clicked => { root.play-track(i); }
@@ -3639,8 +3699,8 @@ export component MainWindow inherits Window {
             x: clamp(root.menu-x, 8px, parent.width - self.width - 8px);
             y: clamp(root.menu-y, 8px, parent.height - self.height - 8px);
             width: 304px; height: root.menu-page == 0 ? 454px : 360px;
-            border-radius: 12px; background: #202024;
-            border-width: 1px; border-color: #ffffff1c;
+            border-radius: 18px; background: root.menu-bg;
+            border-width: 1px; border-color: root.menu-border;
             drop-shadow-blur: 24px; drop-shadow-color: #00000099;
             TouchArea { }
             VerticalLayout {
@@ -3711,8 +3771,8 @@ export component MainWindow inherits Window {
             x: clamp(root.menu-x, 8px, parent.width - self.width - 8px);
             y: clamp(root.menu-y, 8px, parent.height - self.height - 8px);
             width: 278px; height: root.list-is-playlist ? 164px : 56px;
-            border-radius: 12px; background: #202024;
-            border-width: 1px; border-color: #ffffff1c;
+            border-radius: 18px; background: root.menu-bg;
+            border-width: 1px; border-color: root.menu-border;
             drop-shadow-blur: 24px; drop-shadow-color: #00000099;
             VerticalLayout {
                 padding: 8px; spacing: 0px;

@@ -841,6 +841,7 @@ async fn handle(app: &Arc<App>, msg: &Value) -> Result<Value> {
         }
         // ---- Lecturas por la sesión (sin cuota de Web API) ----
         "rootlist" => reads::library(&engine(app).await?.session).await,
+        "library_collection" => reads::library_collection(&engine(app).await?.session).await,
         "playlist_items" => {
             let e = engine(app).await?;
             if msg.get("fresh").and_then(Value::as_bool)==Some(true) { reads::forget_playlist(s(msg,"target")?); }

@@ -30,7 +30,7 @@ pub struct Engine {
 fn is_shared_read(cmd: &str) -> bool {
     matches!(
         cmd,
-        "rootlist" | "playlist_items" | "playlist_header" | "album_details" | "album_tracks" | "artist_top"
+        "rootlist" | "library_collection" | "playlist_items" | "playlist_header" | "album_details" | "album_tracks" | "artist_top"
             | "artist_albums" | "artist_related" | "artist_overview" | "recently_played" | "home_sections"
             | "search" | "artists" | "track_credits" | "user_profile" | "user_followers" | "user_following" | "lyrics"
             | "liked_contains" | "liked_items" | "pins" | "canvas" | "devices" | "recommend"

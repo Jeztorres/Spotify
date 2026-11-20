@@ -345,6 +345,50 @@ pub async fn playlist_items(session: &Session, id: &str, offset: usize, limit: u
     Ok(json!({"items": items, "total": all.len(), "next": if more { json!("session") } else { Value::Null }}))
 }
 
+// ---- Biblioteca: álbumes guardados y artistas seguidos (colección de la sesión) ----
+
+/// URIs de un conjunto de la colección (`collection` = canciones y álbumes, `artist` = artistas
+/// seguidos) que empiezan por `prefix`, lo más reciente primero.
+async fn collection_uris(session: &Session, set: &str, prefix: &str, max: usize) -> Result<Vec<String>> {
+    let mut items: Vec<(i64, String)> = Vec::new();
+    let mut token = String::new();
+    for _ in 0..40 {
+        let page = session.spclient().get_collection_page(set, &token, 300).await?;
+        for it in &page.items {
+            if !it.is_removed && it.uri.starts_with(prefix) { items.push((it.added_at, it.uri.clone())); }
+        }
+        if page.next_page_token.is_empty() { break; }
+        token = page.next_page_token.clone();
+    }
+    items.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut seen = BTreeSet::new();
+    Ok(items.into_iter().map(|(_, u)| u).filter(|u| seen.insert(u.clone())).take(max).collect())
+}
+
+/// Álbumes guardados y artistas seguidos para los filtros de «Tu biblioteca».
+pub async fn library_collection(session: &Session) -> Result<Value> {
+    let (album_uris, artist_uris) = tokio::join!(
+        collection_uris(session, "collection", "spotify:album:", 400),
+        collection_uris(session, "artist", "spotify:artist:", 400),
+    );
+    let album_uris = album_uris.unwrap_or_default();
+    let artist_uris = artist_uris.unwrap_or_default();
+    let albums = if album_uris.is_empty() { HashMap::new() } else { albums_cached(session, &album_uris).await.unwrap_or_default() };
+    let artists: HashMap<String, Artist> = if artist_uris.is_empty() { HashMap::new() } else {
+        batch(session, &artist_uris, ExtensionKind::ARTIST_V4).await.unwrap_or_default()
+    };
+    let albums: Vec<Value> = album_uris.iter().filter_map(|u| albums.get(u)).map(|al| json!({
+        "id": id_of(&al.id), "uri": uri_of(&al.id), "name": al.name,
+        "images": images_json(&al.covers),
+        "artists": al.artists.iter().map(artist_ref).collect::<Vec<_>>(),
+    })).collect();
+    let artists: Vec<Value> = artist_uris.iter().filter_map(|u| artists.get(u)).map(|a| json!({
+        "id": id_of(&a.id), "uri": uri_of(&a.id), "name": a.name,
+        "images": images_json(if a.portraits.is_empty() { &a.portrait_group } else { &a.portraits }),
+    })).collect();
+    Ok(json!({"albums": albums, "artists": artists}))
+}
+
 // ---- Canciones que te gustan (colección), sin Web API ----
 
 static LIKED: Mutex<Option<(Instant, Vec<String>)>> = Mutex::new(None);
