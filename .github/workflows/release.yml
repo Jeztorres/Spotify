@@ -21,7 +21,9 @@ jobs:
         working-directory: Engine
         run: cargo build --release
 
-      - name: Build App
+      - name: Build App (motor incrustado)
+        env:
+          SPOTIFYMAC_ENGINE_EMBED: ${{ github.workspace }}/Engine/target/release/spotifymac-engine
         run: cargo build --release -p spotify-win
 
       - name: Package .app and .dmg
@@ -75,7 +77,9 @@ jobs:
         working-directory: Engine
         run: cargo build --release
 
-      - name: Build App
+      - name: Build App (motor incrustado)
+        env:
+          SPOTIFYMAC_ENGINE_EMBED: ${{ github.workspace }}\Engine\target\release\spotifymac-engine.exe
         run: cargo build --release -p spotify-win
 
       - name: Package Windows ZIP
@@ -83,7 +87,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path win_staging/media | Out-Null
           Copy-Item target/release/spotify-win.exe win_staging/
-          Copy-Item Engine/target/release/spotifymac-engine.exe win_staging/
           Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
           Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
           $ffmpegExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffmpeg.exe -Recurse | Select-Object -First 1

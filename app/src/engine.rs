@@ -77,13 +77,65 @@ fn binary_name() -> &'static str {
     if cfg!(windows) { "spotifymac-engine.exe" } else { "spotifymac-engine" }
 }
 
-/// Busca el binario del motor: junto al ejecutable (o su destino real), directorio de trabajo,
-/// rutas estándar de instalación, `PATH`, variable de entorno o `Engine/target/release` (desarrollo).
+/// Motor incrustado en el ejecutable al compilar (ver `build.rs`). Vacío si no se incrustó.
+#[cfg(embedded_engine)]
+static EMBEDDED_ENGINE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/engine.bin"));
+
+/// Extrae el motor incrustado a la carpeta de datos (una vez por versión) y devuelve su ruta.
+/// Así la app no depende de que `spotifymac-engine` esté junto al `.exe`.
+#[cfg(embedded_engine)]
+fn embedded_binary() -> Option<PathBuf> {
+    use std::hash::Hasher;
+    if EMBEDDED_ENGINE.is_empty() {
+        return None;
+    }
+    // Carpeta por versión: commit + huella del contenido (nunca se reutiliza un motor viejo).
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    h.write(&EMBEDDED_ENGINE[..EMBEDDED_ENGINE.len().min(1 << 20)]);
+    h.write_usize(EMBEDDED_ENGINE.len());
+    let tag = format!("{}-{:016x}", env!("APP_COMMIT_HASH"), h.finish());
+    let root = data_dir().join("engine");
+    let dir = root.join(&tag);
+    let path = dir.join(binary_name());
+    let ok = std::fs::metadata(&path).map(|m| m.len() == EMBEDDED_ENGINE.len() as u64).unwrap_or(false);
+    if !ok {
+        std::fs::create_dir_all(&dir).ok()?;
+        let tmp = dir.join(format!("{}.part", binary_name()));
+        std::fs::write(&tmp, EMBEDDED_ENGINE).ok()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
+        }
+        let _ = std::fs::remove_file(&path);
+        std::fs::rename(&tmp, &path).ok()?;
+        // Limpia versiones anteriores (si alguna sigue en uso, se borra en otra ocasión).
+        if let Ok(entries) = std::fs::read_dir(&root) {
+            for e in entries.flatten() {
+                if e.file_name() != std::ffi::OsStr::new(&tag) {
+                    let _ = std::fs::remove_dir_all(e.path());
+                }
+            }
+        }
+    }
+    Some(path)
+}
+
+#[cfg(not(embedded_engine))]
+fn embedded_binary() -> Option<PathBuf> {
+    None
+}
+
+/// Busca el binario del motor: variable de entorno, motor incrustado en la app, junto al ejecutable
+/// (o su destino real), directorio de trabajo, rutas de instalación, `PATH` o `Engine/target/release`.
 pub fn find_binary() -> Option<PathBuf> {
     let name = binary_name();
     let mut candidates = Vec::new();
     if let Some(p) = std::env::var_os("SPOTIFYMAC_ENGINE") {
         candidates.push(PathBuf::from(p));
+    }
+    if let Some(p) = embedded_binary() {
+        candidates.push(p);
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
@@ -128,7 +180,7 @@ impl Engine {
     pub fn spawn(on_event: impl Fn(EngineEvent) + Send + 'static) -> Result<Arc<Engine>, String> {
         let bin = find_binary().ok_or_else(|| {
             format!(
-                "No se encontró {} junto a la app ni en la carpeta de instalación. Copia {} junto al ejecutable o ejecuta el instalador.",
+                "No se encontró {} (no viene incrustado en esta compilación ni está junto a la app). Descarga la última versión o copia {} junto al ejecutable.",
                 binary_name(),
                 binary_name()
             )
@@ -257,5 +309,22 @@ impl Drop for Engine {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+#[cfg(all(test, embedded_engine))]
+mod embedded_tests {
+    #[test]
+    fn extracts_embedded_engine_once() {
+        let p = super::embedded_binary().expect("motor incrustado");
+        assert!(p.is_file());
+        assert_eq!(std::fs::metadata(&p).unwrap().len(), super::EMBEDDED_ENGINE.len() as u64);
+        // Segunda llamada: misma ruta, sin reescribir.
+        let m1 = std::fs::metadata(&p).unwrap().modified().unwrap();
+        assert_eq!(super::embedded_binary().unwrap(), p);
+        assert_eq!(std::fs::metadata(&p).unwrap().modified().unwrap(), m1);
+        assert_eq!(super::find_binary().unwrap(), p);
+        let out = std::process::Command::new(&p).arg("--version").output().expect("se ejecuta");
+        assert!(out.status.success());
     }
 }

@@ -603,6 +603,31 @@ fn valid_stream(url: &str) -> bool {
             .next()
             .is_some_and(|u| u.ends_with(".m3u8") || u.ends_with(".mp4"))
 }
+/// Guarda una copia del decodificador en la carpeta de datos la primera vez que se encuentra junto
+/// a la app: así las portadas animadas siguen funcionando aunque luego se mueva solo el `.exe`.
+fn remember_decoder(found: &std::path::Path, bin_name: &str) {
+    let dir = crate::engine::data_dir().join("media");
+    let target = dir.join(bin_name);
+    if target.is_file() || found == target.as_path() {
+        return;
+    }
+    let src = found.to_path_buf();
+    let _ = std::thread::Builder::new().name("ffmpeg-copy".into()).spawn(move || {
+        let _ = std::fs::create_dir_all(&dir);
+        let tmp = dir.join(format!("{}.part", target.file_name().and_then(|n| n.to_str()).unwrap_or("ffmpeg")));
+        if std::fs::copy(&src, &tmp).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
+            }
+            let _ = std::fs::rename(&tmp, &target);
+        } else {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    });
+}
+
 fn decoder() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let base = exe.parent()?;
@@ -625,6 +650,7 @@ fn decoder() -> Option<PathBuf> {
         PathBuf::from("/usr/bin/ffmpeg"),
     ]);
     if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+        remember_decoder(&found, bin_name);
         return Some(found);
     }
     if let Some(path_var) = std::env::var_os("PATH") {
