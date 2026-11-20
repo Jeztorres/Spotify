@@ -132,7 +132,27 @@ fn clean_solo_tracks(app: &App, tracks: Vec<Track>) -> Vec<Track> {
     out
 }
 
+/// Sin «repetir lista», si la cola vuelve a empezar la lista (las dos primeras canciones del
+/// contexto aparecen otra vez seguidas), se corta ahí: no debe verse un bucle que no va a sonar.
+fn cut_context_wrap(items: Vec<QueueItem>) -> Vec<QueueItem> {
+    let ctx: Vec<usize> = (0..items.len()).filter(|&i| !items[i].queued && items[i].autoplay != Some(true)).collect();
+    if ctx.len() < 4 {
+        return items;
+    }
+    let (a, b) = (&items[ctx[0]].track.uri, &items[ctx[1]].track.uri);
+    for w in 2..ctx.len() - 1 {
+        if &items[ctx[w]].track.uri == a && &items[ctx[w + 1]].track.uri == b {
+            let cut = ctx[w];
+            return items.into_iter().enumerate()
+                .filter(|(i, it)| *i < cut || it.autoplay == Some(true))
+                .map(|(_, it)| it).collect();
+        }
+    }
+    items
+}
+
 pub fn set_engine_queue(ui: &MainWindow, app: &mut App, items: Vec<QueueItem>) {
+    let items = if ui.get_repeat_mode() == "all" { items } else { cut_context_wrap(items) };
     app.queue.items = clean_engine_items(app, items);
     refresh(ui, app);
     maybe_fill_infinite(ui, app);
@@ -361,4 +381,28 @@ pub fn toast(ui: &MainWindow, app: &mut App, msg: &str) {
     app.queue.toast_timer.start(TimerMode::SingleShot, Duration::from_secs(2), || {
         with_app(|ui, _| ui.set_toast("".into()));
     });
+}
+
+#[cfg(test)]
+mod wrap_tests {
+    use super::cut_context_wrap;
+    use spotify_core::{QueueItem, Track};
+
+    fn item(id: &str, autoplay: bool) -> QueueItem {
+        QueueItem { uid: id.into(), queued: false, autoplay: autoplay.then_some(true),
+            track: Track { id: None, uri: format!("spotify:track:{id}"), name: id.into(), artists: vec![], album: None, duration_ms: 1, explicit: None } }
+    }
+
+    #[test]
+    fn cuts_when_the_list_starts_over() {
+        let q: Vec<_> = ["a", "b", "c", "a", "b", "c"].iter().map(|i| item(i, false)).collect();
+        let out: Vec<_> = cut_context_wrap(q).into_iter().map(|i| i.uid).collect();
+        assert_eq!(out, ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn keeps_duplicates_that_are_not_a_restart() {
+        let q: Vec<_> = ["a", "b", "c", "a", "d", "e"].iter().map(|i| item(i, false)).collect();
+        assert_eq!(cut_context_wrap(q).len(), 6);
+    }
 }

@@ -503,7 +503,13 @@ pub fn open_source(ui: &MainWindow, app: &mut App, src: Source) {
     ui.set_list_message("Cargando canciones…".into());
     ui.set_list_summary("".into());
     let (title, context, active) = match &src {
-        Source::Liked => ("Canciones que te gustan".to_owned(), None, Some(0)),
+        // Se reproduce como la colección completa de Spotify («Tus me gusta»), no solo con las
+        // canciones ya cargadas en pantalla: antes, al acabarse esas, el autoplay ponía canciones ajenas.
+        Source::Liked => (
+            "Canciones que te gustan".to_owned(),
+            app.username.as_deref().filter(|u| !u.is_empty()).map(|u| format!("spotify:user:{u}:collection")),
+            Some(0),
+        ),
         Source::Playlist(p) => {
             (p.name.clone(), Some(p.uri.clone()), app.playlists.iter().position(|x| x.uri == p.uri).map(|i| i + 1))
         }

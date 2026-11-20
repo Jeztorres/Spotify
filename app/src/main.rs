@@ -1187,6 +1187,14 @@ fn render_player(ui: &MainWindow, app: &mut App) {
     }
 }
 
+fn repeat_to_engine(mode: &str) -> &'static str {
+    match mode {
+        "context" | "all" => "context",
+        "track" | "one" => "track",
+        _ => "off",
+    }
+}
+
 fn repeat_to_ui(engine_mode: &str) -> &'static str {
     match engine_mode {
         "context" => "all",
@@ -1214,6 +1222,11 @@ fn apply_state(ui: &MainWindow, app: &mut App, s: EngineState) {
     }
     ui.set_shuffle(s.shuffle);
     ui.set_repeat_mode(repeat_to_ui(&s.repeat).into());
+    // Lo que muestra la interfaz es lo que se manda al cargar otra lista: si no se recordaba, al
+    // abrir otra playlist se enviaba «sin repetir» aunque el botón dijera lo contrario (la cola
+    // se veía en bucle y luego no se repetía).
+    app.shuffle = s.shuffle;
+    app.repeat_engine = repeat_to_engine(&s.repeat);
     ui.set_volume((s.volume as f32 / 100.0).clamp(0.0, 1.0));
     render_player(ui, app);
     if previous != app.player.track.as_ref().map(|t| t.uri.clone()) {
@@ -1655,6 +1668,8 @@ fn solo_update(ui: &MainWindow, app: &mut App, u: Update, live: Live) {
             let changed=if waiting {false}else{app.pending_track=None;app.player.sync_solo(&live,u==Update::Live)};
             ui.set_shuffle(live.shuffle);
             ui.set_repeat_mode(repeat_to_ui(&live.repeat).into());
+            app.shuffle = live.shuffle;
+            app.repeat_engine = repeat_to_engine(&live.repeat);
             ui.set_volume((live.volume as f32 / 100.0).clamp(0.0, 1.0));
             render_player(ui, app);
             if changed {
