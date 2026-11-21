@@ -1036,6 +1036,12 @@ pub fn library_changed(ui: &MainWindow, app: &mut App, kind: &str) {
 }
 
 pub fn wire(ui: &MainWindow) {
+    ui.on_drop_track_library(|kind, index, row| {
+        with_app(|ui, app| { if index >= 0 && row >= 0 { drop_on_library(ui, app, kind, index as usize, row as usize); } });
+    });
+    ui.on_move_list_track(|from, to| {
+        with_app(|ui, app| { if from >= 0 && to >= 0 { move_in_playlist(ui, app, from as usize, to as usize); } });
+    });
     ui.on_list_filter_changed(|| {
         with_app(|_, app| refresh_rows(app));
     });
@@ -1268,4 +1274,65 @@ mod tests {
         .unwrap();
         assert_eq!(album_name_for_track(&t_no_album), None);
     }
+}
+
+// ---------- Arrastrar canciones ----------
+
+/// Suelta una canción sobre una fila de «Tu biblioteca»: «Tus me gusta» la guarda y tus playlists
+/// la añaden al final.
+pub fn drop_on_library(ui: &MainWindow, app: &mut App, kind: i32, index: usize, row: usize) {
+    let Some(track) = track_at(app, kind, index) else { return };
+    let Some(entry) = app.library.row_data(row) else { return };
+    let en = ui.get_pref_lang() == "en";
+    if entry.special {
+        if app.actions.saved.get(&track.uri).copied() == Some(true) {
+            crate::queue_ui::toast(ui, app, if en { "Already in your Liked Songs" } else { "Ya está en Tus me gusta" });
+        } else {
+            toggle_saved(ui, app, track);
+        }
+        return;
+    }
+    if entry.kind != "own" {
+        crate::queue_ui::toast(ui, app, if en { "You can only add songs to your own playlists" } else { "Solo puedes agregar canciones a tus playlists" });
+        return;
+    }
+    let Some(id) = entry.uri.as_str().strip_prefix("spotify:playlist:").map(str::to_owned) else { return };
+    let Some(engine) = app.engine.clone() else { return };
+    let (uri, title, list) = (track.uri.clone(), track.name.clone(), entry.title.to_string());
+    std::thread::spawn(move || {
+        let result = engine.call("playlist_add", json!({"target": id, "uris": [uri]}), Duration::from_secs(20));
+        on_ui(move |ui, app| {
+            let en = ui.get_pref_lang() == "en";
+            let msg = match result {
+                Ok(_) => if en { format!("Added to {list}: {title}") } else { format!("Añadida a {list}: {title}") },
+                Err(_) => if en { "Could not add the song".into() } else { "No se pudo añadir la canción".into() },
+            };
+            crate::queue_ui::toast(ui, app, &msg);
+        });
+    });
+}
+
+/// Reordena una canción dentro de tu playlist abierta (sin filtro ni orden aplicados).
+pub fn move_in_playlist(ui: &MainWindow, app: &mut App, from: usize, to: usize) {
+    let Some(browse::Source::Playlist(p)) = app.current_source.clone() else { return };
+    if from == to || from >= app.tracks.len() || to >= app.tracks.len() || !ui.get_list_can_edit() {
+        return;
+    }
+    // Respuesta inmediata en pantalla; luego se guarda en Spotify.
+    let item = app.tracks.remove(from);
+    app.tracks.insert(to, item);
+    crate::refresh_rows(app);
+    // Spotify espera la posición (en la lista original) delante de la que se inserta.
+    let to_index = if to > from { to + 1 } else { to };
+    let Some(engine) = app.engine.clone() else { return };
+    let id = p.id.clone();
+    std::thread::spawn(move || {
+        let result = engine.call("playlist_move", json!({"target": id, "from": from, "to_index": to_index}), Duration::from_secs(20));
+        on_ui(move |ui, app| {
+            if result.is_err() {
+                crate::queue_ui::toast(ui, app, if ui.get_pref_lang() == "en" { "Could not move the song" } else { "No se pudo mover la canción" });
+                browse::reload_playlist(ui, app, &id);
+            }
+        });
+    });
 }

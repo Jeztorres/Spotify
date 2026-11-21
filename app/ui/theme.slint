@@ -4,14 +4,22 @@ export global Theme {
     in-out property <bool> themed: false;
     in-out property <color> theme-color: rgb(29, 185, 84);
     out property <color> green: root.themed ? root.theme-color : rgb(29, 185, 84);
-    out property <color> green-bright: root.themed ? root.theme-color.mix(#ffffff, 0.82) : rgb(31, 214, 97);
-    out property <color> bg: root.themed ? root.theme-color.mix(rgb(18, 18, 18), 0.05) : rgb(18, 18, 18);
-    out property <color> panel: rgb(24, 24, 24);
-    out property <color> side: #000000;
-    out property <color> card: rgb(28, 28, 28);
-    out property <color> hover: rgb(42, 42, 42);
-    out property <color> field: rgb(36, 36, 36);
-    out property <color> sub: rgb(179, 179, 179);
+    out property <color> green-bright: root.light
+        ? (root.themed ? root.theme-color.mix(#000000, 0.72) : rgb(20, 160, 70))
+        : (root.themed ? root.theme-color.mix(#ffffff, 0.82) : rgb(31, 214, 97));
+    // Modo claro u oscuro de toda la app.
+    in-out property <bool> light: false;
+    // Texto e iconos principales, y base de las superposiciones (hover, separadores…).
+    out property <color> fg: root.light ? #16161a : #ffffff;
+    // Texto sobre un fondo del color de acento (botones llenos, chips seleccionados).
+    out property <color> on-fg: root.light ? #ffffff : #000000;
+    out property <color> bg: root.light ? (root.themed ? root.theme-color.mix(#f6f6f8, 0.06) : #f6f6f8) : (root.themed ? root.theme-color.mix(rgb(18, 18, 18), 0.05) : rgb(18, 18, 18));
+    out property <color> panel: root.light ? #ffffff : rgb(24, 24, 24);
+    out property <color> side: root.light ? #ececf0 : #000000;
+    out property <color> card: root.light ? #ffffff : rgb(28, 28, 28);
+    out property <color> hover: root.light ? #e4e4ea : rgb(42, 42, 42);
+    out property <color> field: root.light ? #e9e9ee : rgb(36, 36, 36);
+    out property <color> sub: root.light ? #5c5e68 : rgb(179, 179, 179);
     out property <length> radius: 12px;
     // Tipografía: Segoe UI Variable en Windows 11 (Display para títulos, Text para el resto); Segoe UI en Windows 10.
     in-out property <string> display-font: "Segoe UI";
