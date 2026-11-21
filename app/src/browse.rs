@@ -123,6 +123,9 @@ pub fn fill_cards(app: &mut App, which: Cards, items: Vec<(String, String, Optio
 
 // ---------- Biblioteca ----------
 
+/// Podcasts en la biblioteca y la búsqueda: apagados por ahora (el motor ya los soporta).
+const PODCASTS_ENABLED: bool = false;
+
 /// Los fijados aparecen primero; cada fila conserva su URI aunque cambie de posición.
 pub fn show_playlists(app: &mut App, playlists: Vec<Playlist>) {
     app.playlists = playlists;
@@ -160,7 +163,8 @@ pub fn rebuild_library(app: &mut App) {
         cover: covers.get(&p.uri).cloned().unwrap_or_default(), pinned: pinned(&p.uri),
         active: false, special: false, kind: "album".into(),
     }));
-    entries.extend(app.lib_shows.iter().map(|p| LibraryEntry {
+    // Podcasts desactivados por ahora (ver `PODCASTS_ENABLED`).
+    entries.extend(app.lib_shows.iter().filter(|_| PODCASTS_ENABLED).map(|p| LibraryEntry {
         uri: p.uri.clone().into(), title: p.name.clone().into(),
         subtitle: p.owner.as_ref().and_then(|o| o.display_name.clone()).unwrap_or_else(|| "Podcast".into()).into(),
         cover: covers.get(&p.uri).cloned().unwrap_or_default(), pinned: pinned(&p.uri),
@@ -176,7 +180,7 @@ pub fn rebuild_library(app: &mut App) {
     highlight_library(app, None);
     let mut jobs: Vec<(String, String, bool)> = app.playlists.iter()
         .filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))).collect();
-    jobs.extend(app.lib_albums.iter().chain(app.lib_shows.iter()).filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))));
+    jobs.extend(app.lib_albums.iter().chain(app.lib_shows.iter().filter(|_| PODCASTS_ENABLED)).filter_map(|p| p.image_url().map(|u| (p.uri.clone(), u.to_owned(), false))));
     jobs.extend(app.lib_artists.iter().filter_map(|a| {
         a.images.as_ref().and_then(|i| i.first()).map(|i| (a.uri.clone(), i.url.clone(), true))
     }));
@@ -301,6 +305,53 @@ fn apply_list_cover(ui: &MainWindow, d: &Decoded) {
         ui.set_list_cover_blur(to_image(&images::editorial_blur(d)));
     }
     apply_list_colors(ui, d.color);
+}
+
+/// Historial: las canciones que sonaron en este equipo, la más reciente primero.
+pub fn open_history(ui: &MainWindow, app: &mut App) {
+    crate::close_now_playing_view(ui, app, false);
+    push_history(ui, app);
+    media::reset(ui, app);
+    app.current_source = None;
+    app.context = None;
+    ui.set_list_filter("".into());
+    ui.set_list_sort(0);
+    ui.set_list_ascending(true);
+    ui.set_list_is_album(false);
+    ui.set_list_is_liked(false);
+    ui.set_list_is_playlist(false);
+    ui.set_list_can_edit(false);
+    let en = ui.get_pref_lang() == "en";
+    ui.set_list_kind(if en { "HISTORY" } else { "HISTORIAL" }.into());
+    ui.set_list_description(if en { "What you played on this device, most recent first." } else { "Lo que escuchaste en este equipo, lo más reciente primero." }.into());
+    ui.set_list_header_artist("".into());
+    ui.set_list_header_artist_clickable(false);
+    ui.set_list_artist_avatar(Image::default());
+    ui.set_list_editorial(false);
+    ui.set_has_list_banner(false);
+    ui.set_list_banner(Image::default());
+    ui.set_list_cover_blur(Image::default());
+    ui.set_list_cover(Image::default());
+    apply_list_colors(ui, None);
+    ui.set_list_scroll(0.0);
+    ui.set_page(2);
+    ui.set_page_title(if en { "History" } else { "Historial" }.into());
+    app.list_gen += 1;
+    let gen = app.list_gen;
+    let tracks = history::tracks(app);
+    let n = tracks.len();
+    ui.set_list_message(if n == 0 { if en { "Nothing here yet: the songs you play will appear here." } else { "Aún no hay nada: aquí aparecerán las canciones que escuches." } } else { "" }.into());
+    ui.set_list_summary(if n == 0 { String::new() } else { format!("{n} canciones") }.into());
+    ui.set_list_tracks_chip(if n == 0 { String::new() } else { format!("{n} {}", if n == 1 { "CANCIÓN" } else { "CANCIONES" }) }.into());
+    let urls: Vec<String> = tracks.iter().take(30).filter_map(|t| t.image_url().map(str::to_owned)).collect();
+    if let Some(url) = mosaic(&urls) {
+        load_cover(app, &url, 400, move |ui, app, d| {
+            if app.list_gen == gen { apply_list_cover(ui, d); }
+        });
+    }
+    app.tracks = tracks;
+    refresh_rows(app);
+    highlight_library(app, None);
 }
 
 pub fn open_radio(ui: &MainWindow, app: &mut App, seed_uri: String, title: String, subtitle: String, cover_url: Option<String>) {
@@ -854,7 +905,7 @@ fn run_search(app: &mut App, q: String, gen: u64) {
     let Some(engine) = app.engine.clone() else { return };
     std::thread::spawn(move || {
         let reply = engine
-            .call("search", json!({"q": q, "types": "track,artist,album,playlist,show", "limit": SEARCH_PAGE, "offset": 0}), Duration::from_secs(30))
+            .call("search", json!({"q": q, "types": "track,artist,album,playlist", "limit": SEARCH_PAGE, "offset": 0}), Duration::from_secs(30))
             .and_then(|v| serde_json::from_value::<SearchResponse>(v).map_err(|e| e.to_string()));
         match reply {
             Ok(r) => {

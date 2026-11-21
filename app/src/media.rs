@@ -976,7 +976,7 @@ fn restart_active_video(output: Output) {
                 if ui.get_now_playing_open() {
                     if let Some(track) = app.player.track.clone() {
                         app.media_now.key = None;
-                        load_now(ui, app, &track);
+                        load_now_inner(ui, app, &track, true);
                     }
                 }
             }
@@ -1435,6 +1435,12 @@ pub fn load(app: &mut App, artist: String, album: Option<String>) {
 
 /// Portada animada del álbum que suena, para la pantalla completa.
 pub fn load_now(ui: &MainWindow, app: &mut App, track: &Track) {
+    load_now_inner(ui, app, track, false);
+}
+
+/// `keep_frame`: al reiniciar el mismo video (bucle) se conserva el último fotograma, sin volver
+/// un instante a la portada fija: la animación se ve continua.
+fn load_now_inner(ui: &MainWindow, app: &mut App, track: &Track, keep_frame: bool) {
     let Some(album) = track.album.as_ref().filter(|a| !a.name.trim().is_empty()) else {
         stop_now(ui, app);
         return;
@@ -1449,8 +1455,10 @@ pub fn load_now(ui: &MainWindow, app: &mut App, track: &Track) {
     }
     app.media_now.stop();
     app.media_now.key = Some(key.clone());
-    ui.set_track_motion_frame(Image::default());
-    ui.set_track_motion_ready(false);
+    if !keep_frame {
+        ui.set_track_motion_frame(Image::default());
+        ui.set_track_motion_ready(false);
+    }
     let artist = artist.name.clone();
     let album = album.name.clone();
     std::thread::spawn(move || {

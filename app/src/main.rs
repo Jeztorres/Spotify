@@ -13,6 +13,7 @@ mod catalog;
 mod knowledge;
 mod lyrics;
 mod media;
+mod history;
 mod notify;
 mod native;
 mod engine;
@@ -511,6 +512,10 @@ mod media_keys {
         }
     }
 
+    thread_local! {
+        static LAST: RefCell<(String, Option<bool>)> = const { RefCell::new((String::new(), None)) };
+    }
+
     pub fn update_smtc(
         title: &str,
         artist: &str,
@@ -519,17 +524,34 @@ mod media_keys {
         playing: bool,
         duration_ms: i64,
     ) {
+        // Solo se manda lo que cambió: en macOS cada `set_metadata` vuelve a descargar la portada.
+        let key = format!("{title}\u{1}{artist}\u{1}{album}\u{1}{}", cover_url.unwrap_or(""));
+        let (meta_changed, play_changed) = LAST.with(|l| {
+            let mut l = l.borrow_mut();
+            let m = l.0 != key;
+            let p = l.1 != Some(playing);
+            l.0 = key;
+            l.1 = Some(playing);
+            (m, p)
+        });
+        if !meta_changed && !play_changed {
+            return;
+        }
         CONTROLS.with(|cell| {
             let mut guard = cell.borrow_mut();
             let Some(controls) = guard.as_mut() else { return };
-            let _ = controls.set_metadata(MediaMetadata {
-                title: Some(title),
-                artist: Some(artist),
-                album: Some(album),
-                cover_url,
-                duration: (duration_ms > 0).then(|| Duration::from_millis(duration_ms as u64)),
-            });
-            let _ = controls.set_playback(if playing {
+            if meta_changed {
+                let _ = controls.set_metadata(MediaMetadata {
+                    title: Some(title),
+                    artist: Some(artist),
+                    album: Some(album),
+                    cover_url,
+                    duration: (duration_ms > 0).then(|| Duration::from_millis(duration_ms as u64)),
+                });
+            }
+            let _ = controls.set_playback(if title.is_empty() {
+                MediaPlayback::Stopped
+            } else if playing {
                 MediaPlayback::Playing { progress: None }
             } else {
                 MediaPlayback::Paused { progress: None }
@@ -939,6 +961,7 @@ struct App {
     timer: Timer,
     notify: notify::NotifyState,
     sleep: notify::SleepState,
+    listened: history::HistoryState,
     connect: connect::State,
     settings: settings::State,
     cover_url: Option<String>,
@@ -1151,6 +1174,7 @@ fn render_player(ui: &MainWindow, app: &mut App) {
                 }
             }
             notify::track_changed(ui, app);
+            history::record(app);
             if ui.get_now_playing_open() {
                 media::load_now(ui, app, &t);
             }
@@ -1159,7 +1183,8 @@ fn render_player(ui: &MainWindow, app: &mut App) {
             }
             queue_ui::maybe_fill_infinite(ui, app);
             settings::update_crossfade_marker(ui, t.duration_ms as u32);
-            #[cfg(windows)]
+            // Windows: controles multimedia del sistema · macOS: «Reproduciendo» del Centro de control
+            // y teclas multimedia · Linux: MPRIS.
             media_keys::update_smtc(
                 &t.name,
                 &t.artist_line(),
@@ -1173,7 +1198,6 @@ fn render_player(ui: &MainWindow, app: &mut App) {
             ui.set_track_title("Nada sonando".into());
             ui.set_track_artist("".into());
             ui.set_track_album("".into());
-            #[cfg(windows)]
             media_keys::update_smtc("", "", "", None, false, 0);
         }
     }
@@ -1910,6 +1934,7 @@ fn main() -> Result<(), slint::PlatformError> {
             timer: Timer::default(),
             notify: notify::NotifyState::default(),
             sleep: notify::SleepState::default(),
+            listened: history::HistoryState::default(),
             connect: connect::State::default(),
             settings: settings::State::default(),
             cover_url: None,
@@ -1945,6 +1970,9 @@ fn main() -> Result<(), slint::PlatformError> {
             ui.set_page(page);
             ui.set_page_title(if page == 1 { "Buscar" } else { "Inicio" }.into());
         });
+    });
+    ui.on_open_history(|| {
+        with_app(|ui, app| browse::open_history(ui, app));
     });
     ui.on_set_sleep(|minutes| {
         with_app(|ui, app| notify::set_sleep(ui, app, minutes));

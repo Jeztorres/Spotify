@@ -1412,6 +1412,12 @@ export component MainWindow inherits Window {
     in-out property <int> settings-tab: 0;
     // Filtro de «Tu biblioteca»: 0 todo · 1 playlists · 2 tus playlists · 3 álbumes · 4 artistas · 5 podcasts
     in-out property <int> library-filter: 0;
+    // Pantalla de atajos de teclado.
+    in-out property <bool> shortcuts-open: false;
+    property <string> shortcut-mod: root.is-macos ? "⌘" : "Ctrl";
+    // Cada cambio pide el foco para el buscador de la barra lateral (⌘/Ctrl K).
+    property <int> search-focus-req: 0;
+    callback open-history();
     // Avisos del sistema al cambiar de canción.
     in-out property <bool> pref-notify: true;
     // Temporizador de apagado: 0 desactivado · -1 al terminar la canción · >0 minutos.
@@ -1426,7 +1432,6 @@ export component MainWindow inherits Window {
         root.pref-lang == "en" ? "Your playlists" : "Tus playlists",
         root.pref-lang == "en" ? "Albums" : "Álbumes",
         root.pref-lang == "en" ? "Artists" : "Artistas",
-        "Podcasts",
     ];
     property <[{icon: string, label: string}]> settings-tabs: [
         { icon: Icons.palette, label: root.pref-lang == "en" ? "Appearance" : "Apariencia" },
@@ -1539,6 +1544,52 @@ export component MainWindow inherits Window {
                 root.toggle-play();
                 return accept;
             }
+            if event.text == Key.Escape && (root.shortcuts-open || root.sleep-menu-open || root.bar-pop-open) {
+                root.shortcuts-open = false; root.sleep-menu-open = false; root.bar-pop-open = false;
+                return accept;
+            }
+            // ---- Atajos (en macOS `control` es la tecla ⌘) ----
+            if event.modifiers.control && (event.text == "k" || event.text == "K") {
+                root.go(1);
+                root.search-focus-req += 1;
+                return accept;
+            }
+            if event.modifiers.control && !event.modifiers.shift && (event.text == "s" || event.text == "S") {
+                root.toggle-saved(2, 0);
+                return accept;
+            }
+            if event.modifiers.control && event.modifiers.shift && (event.text == "s" || event.text == "S") {
+                root.toggle-shuffle();
+                return accept;
+            }
+            if event.modifiers.control && (event.text == "r" || event.text == "R") {
+                root.cycle-repeat();
+                return accept;
+            }
+            if event.modifiers.control && (event.text == "l" || event.text == "L") {
+                if root.now-playing-open { root.full-queue-open = false; root.toggle-lyrics(); } else { root.toggle-right-panel(1); }
+                return accept;
+            }
+            if event.modifiers.control && (event.text == "e" || event.text == "E") {
+                if root.now-playing-open { root.full-queue-open = !root.full-queue-open; } else { root.toggle-right-panel(2); }
+                return accept;
+            }
+            if event.modifiers.control && (event.text == "p" || event.text == "P") {
+                if root.now-playing-open { root.close-now-playing(); } else { root.open-now-playing(); }
+                return accept;
+            }
+            if event.modifiers.control && (event.text == "y" || event.text == "Y") {
+                root.open-history();
+                return accept;
+            }
+            if event.modifiers.control && event.text == "," {
+                root.open-settings();
+                return accept;
+            }
+            if (event.modifiers.control && event.text == "/") || event.text == "?" {
+                root.shortcuts-open = !root.shortcuts-open;
+                return accept;
+            }
             if event.text == Key.Escape && root.now-playing-open {
                 if root.np-cover-expanded {
                     root.np-cover-expanded = false;
@@ -1595,7 +1646,7 @@ export component MainWindow inherits Window {
                 spacing: 0px;
 
             Rectangle {
-                height: 174px + root.mac-top;
+                height: 222px + root.mac-top;
                 background: transparent;
                 VerticalLayout {
                     padding: 14px;
@@ -1603,10 +1654,14 @@ export component MainWindow inherits Window {
                     spacing: 8px;
                     HorizontalLayout {
                         spacing: 8px; alignment: stretch;
-                        LineEdit { horizontal-stretch: 1; preferred-height: 40px; placeholder-text: I18n.nav-search; text <=> root.search-text; edited(text) => { root.go(1); root.search-edited(text); } accepted => { root.search-remember(); } }
+                        LineEdit {
+                            property <int> focus-req: root.search-focus-req;
+                            changed focus-req => { self.focus(); }
+                            horizontal-stretch: 1; preferred-height: 40px; placeholder-text: I18n.nav-search; text <=> root.search-text; edited(text) => { root.go(1); root.search-edited(text); } accepted => { root.search-remember(); } }
                     }
                     NavItem { icon-d: Icons.home; title: I18n.nav-home; accent: root.side-accent; active: root.page == 0; clicked => { root.go(0); } }
                     NavItem { icon-d: Icons.search; title: I18n.nav-search; accent: root.side-accent; active: root.page == 1; clicked => { root.go(1); } }
+                    NavItem { icon-d: Icons.history; title: root.pref-lang == "en" ? "History" : "Historial"; accent: root.side-accent; active: root.page == 2 && (root.page-title == "Historial" || root.page-title == "History"); clicked => { root.open-history(); } }
                 }
             }
 
@@ -2518,11 +2573,11 @@ export component MainWindow inherits Window {
                                         title: root.pref-lang == "en" ? "Interface" : "Interfaz";
                                         SettingRow {
                                             title: root.pref-lang == "en" ? "Progress bar" : "Barra de progreso";
-                                            detail: root.pref-lang == "en" ? "Flat or Material 3 wave." : "Plana u ondulada estilo Material 3.";
+                                            detail: root.pref-lang == "en" ? "A flat line or animated waves." : "Una línea plana u ondas animadas.";
                                             HorizontalLayout {
                                                 spacing: 8px;
                                                 FilterChip { label: root.pref-lang == "en" ? "Flat" : "Plana"; selected: !root.pref-wavy-scrubber; clicked => { root.pref-wavy-scrubber = false; root.pref-changed(); } }
-                                                FilterChip { label: "Material 3"; selected: root.pref-wavy-scrubber; clicked => { root.pref-wavy-scrubber = true; root.pref-changed(); } }
+                                                FilterChip { label: root.pref-lang == "en" ? "Waves" : "Ondas"; selected: root.pref-wavy-scrubber; clicked => { root.pref-wavy-scrubber = true; root.pref-changed(); } }
                                             }
                                         }
                                         SettingRow {
@@ -2671,6 +2726,11 @@ export component MainWindow inherits Window {
                                         SettingRow {
                                             title: I18n.tray-title; detail: I18n.tray-detail;
                                             SwitchBox { on <=> root.pref-tray; toggled => { root.pref-changed(); } }
+                                        }
+                                        SettingRow {
+                                            title: root.pref-lang == "en" ? "Keyboard shortcuts" : "Atajos de teclado";
+                                            detail: root.pref-lang == "en" ? "Press ? anywhere to see them." : "Pulsa ? en cualquier momento para verlos.";
+                                            TonalButton { text: root.pref-lang == "en" ? "View" : "Ver"; clicked => { root.shortcuts-open = true; } }
                                         }
                                         SettingRow {
                                             title: I18n.cache-title; detail: root.cache-message == "" ? I18n.cache-detail : root.cache-message;
@@ -3732,6 +3792,53 @@ export component MainWindow inherits Window {
                                 move(a, b) => { root.queue-move(a, b); }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Atajos de teclado ----
+    if root.shortcuts-open: Rectangle {
+        width: parent.width; height: parent.height; background: #000000a0;
+        TouchArea { clicked => { root.shortcuts-open = false; } }
+        Rectangle {
+            width: min(parent.width - 32px, 560px); height: sc-col.preferred-height;
+            x: (parent.width - self.width) / 2; y: max(16px, (parent.height - self.height) / 2);
+            border-radius: 28px; background: root.menu-bg; border-width: 1px; border-color: root.menu-border;
+            drop-shadow-blur: 40px; drop-shadow-color: #000000b0;
+            TouchArea { }
+            sc-col := VerticalLayout {
+                padding: 24px; spacing: 4px;
+                HorizontalLayout {
+                    height: 44px;
+                    Text { text: root.pref-lang == "en" ? "Keyboard shortcuts" : "Atajos de teclado"; color: white; font-family: Theme.display-font; font-size: 22px; font-weight: 800; vertical-alignment: center; horizontal-stretch: 1; }
+                    RoundIconButton { y: 5px; d: Icons.close; width: 34px; height: 34px; label: "Cerrar"; clicked => { root.shortcuts-open = false; } }
+                }
+                for sc in [
+                    { k: "Espacio", ken: "Space", es: "Reproducir / pausar", en: "Play / pause" },
+                    { k: root.shortcut-mod + " →", ken: "", es: "Siguiente canción", en: "Next song" },
+                    { k: root.shortcut-mod + " ←", ken: "", es: "Canción anterior", en: "Previous song" },
+                    { k: root.shortcut-mod + " ↑ / ↓", ken: "", es: "Subir / bajar volumen", en: "Volume up / down" },
+                    { k: root.shortcut-mod + " M", ken: "", es: "Silenciar", en: "Mute" },
+                    { k: root.shortcut-mod + " S", ken: "", es: "Guardar en Tus me gusta", en: "Save to Liked Songs" },
+                    { k: root.shortcut-mod + " ⇧ S", ken: "", es: "Aleatorio", en: "Shuffle" },
+                    { k: root.shortcut-mod + " R", ken: "", es: "Repetir", en: "Repeat" },
+                    { k: root.shortcut-mod + " K", ken: "", es: "Buscar", en: "Search" },
+                    { k: root.shortcut-mod + " L", ken: "", es: "Letra", en: "Lyrics" },
+                    { k: root.shortcut-mod + " E", ken: "", es: "Cola de reproducción", en: "Queue" },
+                    { k: root.shortcut-mod + " P", ken: "", es: "Vista de reproducción", en: "Now playing view" },
+                    { k: root.shortcut-mod + " Y", ken: "", es: "Historial", en: "History" },
+                    { k: root.shortcut-mod + " ,", ken: "", es: "Configuración", en: "Settings" },
+                    { k: root.shortcut-mod + " /  ·  ?", ken: "", es: "Mostrar estos atajos", en: "Show these shortcuts" },
+                    { k: "Esc", ken: "", es: "Cerrar / salir de la vista", en: "Close / leave view" },
+                ]: HorizontalLayout {
+                    height: 34px; spacing: 12px;
+                    Text { text: root.pref-lang == "en" ? sc.en : sc.es; color: #ffffffd8; font-size: 14px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    Rectangle {
+                        width: kbd.preferred-width + 20px; height: 26px; y: 4px; border-radius: 8px;
+                        background: #ffffff14; border-width: 1px; border-color: #ffffff22;
+                        kbd := Text { text: root.pref-lang == "en" && sc.ken != "" ? sc.ken : sc.k; color: white; font-size: 12px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                     }
                 }
             }
