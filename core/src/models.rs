@@ -356,6 +356,9 @@ pub struct SearchResponse {
     pub albums: Option<Page<Option<AlbumItem>>>,
     #[serde(default)]
     pub playlists: Option<Page<Option<Playlist>>>,
+    /// Podcasts (programas), con la forma de una playlist para reutilizar las pantallas.
+    #[serde(default)]
+    pub shows: Option<Page<Option<Playlist>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

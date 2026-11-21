@@ -110,6 +110,7 @@ global Icons {
     out property <string> prev-solid: "M6 5 C6.8 5 7.5 5.7 7.5 6.5 V17.5 C7.5 18.3 6.8 19 6 19 C5.2 19 4.5 18.3 4.5 17.5 V6.5 C4.5 5.7 5.2 5 6 5 Z M19.5 6.3 V17.7 C19.5 18.5 18.6 19 17.9 18.6 L9.6 13.2 C9 12.8 9 11.2 9.6 10.8 L17.9 5.4 C18.6 5 19.5 5.5 19.5 6.3 Z";
     out property <string> next-solid: "M18 5 C18.8 5 19.5 5.7 19.5 6.5 V17.5 C19.5 18.3 18.8 19 18 19 C17.2 19 16.5 18.3 16.5 17.5 V6.5 C16.5 5.7 17.2 5 18 5 Z M4.5 6.3 V17.7 C4.5 18.5 5.4 19 6.1 18.6 L14.4 13.2 C15 12.8 15 11.2 14.4 10.8 L6.1 5.4 C5.4 5 4.5 5.5 4.5 6.3 Z";
     out property <string> palette: "M12 3 C7 3 3 7 3 12 C3 17 7 21 12 21 C13 21 13.6 20.3 13.6 19.5 C13.6 18.5 12.9 18.1 12.9 17.2 C12.9 16.3 13.6 15.7 14.5 15.7 H16.5 C19 15.7 21 13.7 21 11.2 C21 6.7 17 3 12 3 Z M7.5 11 A1.2 1.2 0 1 0 7.5 13.4 A1.2 1.2 0 1 0 7.5 11 Z M10 6.8 A1.2 1.2 0 1 0 10 9.2 A1.2 1.2 0 1 0 10 6.8 Z M14.6 6.8 A1.2 1.2 0 1 0 14.6 9.2 A1.2 1.2 0 1 0 14.6 6.8 Z";
+    out property <string> moon: "M20 14.5 A8.5 8.5 0 1 1 9.5 4 A6.8 6.8 0 0 0 20 14.5 Z";
     out property <string> volume-low: "M11 5 L6 9 H2 V15 H6 L11 19 Z M15.5 8.5 C16.5 9.5 17 10.7 17 12 C17 13.3 16.5 14.5 15.5 15.5";
     out property <string> shuffle: "M2 18 H4.5 C8 18 9.5 15.5 11 12.5 C12.5 9.5 14 7 17.5 7 H22 M18 3 L22 7 L18 11 M2 6 H4.5 C6 6 7.2 6.6 8.2 7.6 M13.8 16.4 C14.8 17.4 16 18 17.5 18 H22 M18 14 L22 18 L18 22";
     out property <string> repeat: "M17 2 L21 6 L17 10 M3 11 V10 C3 7.8 4.8 6 7 6 H21 M7 22 L3 18 L7 14 M21 13 V14 C21 16.2 19.2 18 17 18 H3";
@@ -1409,13 +1410,23 @@ export component MainWindow inherits Window {
     in-out property <int> page: 0; // 0 inicio · 1 búsqueda · 2 lista
     // Configuración: 0 Apariencia · 1 Audio · 2 General · 3 Cuenta
     in-out property <int> settings-tab: 0;
-    // Filtro de «Tu biblioteca»: 0 todo · 1 playlists · 2 tus playlists · 3 álbumes · 4 artistas
+    // Filtro de «Tu biblioteca»: 0 todo · 1 playlists · 2 tus playlists · 3 álbumes · 4 artistas · 5 podcasts
     in-out property <int> library-filter: 0;
+    // Avisos del sistema al cambiar de canción.
+    in-out property <bool> pref-notify: true;
+    // Temporizador de apagado: 0 desactivado · -1 al terminar la canción · >0 minutos.
+    in property <int> sleep-choice: 0;
+    in property <string> sleep-label;
+    in-out property <bool> sleep-menu-open: false;
+    in-out property <length> sleep-x;
+    in-out property <length> sleep-y;
+    callback set-sleep(int);
     property <[string]> library-filters: [
         "Playlists",
         root.pref-lang == "en" ? "Your playlists" : "Tus playlists",
         root.pref-lang == "en" ? "Albums" : "Álbumes",
         root.pref-lang == "en" ? "Artists" : "Artistas",
+        "Podcasts",
     ];
     property <[{icon: string, label: string}]> settings-tabs: [
         { icon: Icons.palette, label: root.pref-lang == "en" ? "Appearance" : "Apariencia" },
@@ -1662,7 +1673,8 @@ export component MainWindow inherits Window {
                                     || (root.library-filter == 1 && (entry.kind == "playlist" || entry.kind == "own" || entry.kind == "liked"))
                                     || (root.library-filter == 2 && entry.kind == "own")
                                     || (root.library-filter == 3 && entry.kind == "album")
-                                    || (root.library-filter == 4 && entry.kind == "artist");
+                                    || (root.library-filter == 4 && entry.kind == "artist")
+                                    || (root.library-filter == 5 && entry.kind == "show");
                                 visible: self.shown;
                                 height: self.shown ? 58px : 0px;
                                 accent: root.side-custom ? root.side-accent : Theme.green-bright;
@@ -1701,7 +1713,11 @@ export component MainWindow inherits Window {
             min-width: 380px;
             border-radius: 0px;
             background: root.page == 3 ? root.artist-base : (root.page == 2 && (root.has-list-banner || root.list-editorial) ? #0c0d12 : root.surface-tint);
+            // macOS: el contenido empieza bajo la barra de título (ahí el sistema se queda los clics);
+            // la franja conserva el color de la página porque lo pinta este mismo rectángulo.
             animate background { duration: 450ms; }
+            Rectangle {
+                x: 0; y: root.mac-top; width: parent.width; height: parent.height - root.mac-top;
             clip: true;
             if !(root.page == 2 && (root.has-list-banner || root.list-editorial)): Rectangle {
                 width: parent.width; height: parent.height;
@@ -2411,7 +2427,7 @@ export component MainWindow inherits Window {
                         // Centrado con ancho máximo de 1100px (márgenes mínimos de 16/32px).
                         padding-left: max(root.width < 900px ? 16px : 32px, (settings-sv.visible-width - 1100px) / 2);
                         padding-right: max(root.width < 900px ? 16px : 32px, (settings-sv.visible-width - 1100px) / 2);
-                        padding-top: 72px + root.mac-top;
+                        padding-top: 72px;
                         padding-bottom: 24px;
                         VerticalLayout {
                             horizontal-stretch: 1;
@@ -2642,6 +2658,11 @@ export component MainWindow inherits Window {
                                                 FilterChip { label: "Español"; selected: root.pref-lang == "es"; clicked => { root.select-lang("es"); } }
                                                 FilterChip { label: "English"; selected: root.pref-lang == "en"; clicked => { root.select-lang("en"); } }
                                             }
+                                        }
+                                        SettingRow {
+                                            title: root.pref-lang == "en" ? "Song notifications" : "Avisos de canción";
+                                            detail: root.pref-lang == "en" ? "Show a system notification when a new song starts and the app is not in front." : "Muestra un aviso del sistema cuando empieza otra canción y la app no está a la vista.";
+                                            SwitchBox { on <=> root.pref-notify; toggled => { root.pref-changed(); } }
                                         }
                                         SettingRow {
                                             title: I18n.battery-title; detail: I18n.battery-detail;
@@ -2881,9 +2902,8 @@ export component MainWindow inherits Window {
 
             // ---- Barra superior de navegación (Píldora < | > y botón circular de barra lateral) ----
             if !root.now-playing-open: Rectangle {
-                // En macOS, sin barra lateral, se aparta de los botones de semáforo (y se alinea con ellos).
-                x: root.is-macos && !root.sidebar-visible ? 88px : 18px;
-                y: root.is-macos && !root.sidebar-visible ? 2px : 14px;
+                x: 18px;
+                y: 14px;
                 width: 120px;
                 height: 34px;
                 background: transparent;
@@ -2985,7 +3005,9 @@ export component MainWindow inherits Window {
                 edited(text) => { root.search-edited(text); }
                 accepted => { root.search-remember(); }
             }
-        }
+        
+            }
+}
 
         // ---- Columna lateral derecha: letra o cola ----
         if root.right-panel != 0: Rectangle {
@@ -3060,7 +3082,7 @@ export component MainWindow inherits Window {
         property <int> tier: self.width >= 1040px ? 0 : (self.width >= 780px ? 1 : 2);
         property <length> pad: 14px;
         property <length> info-width: self.tier == 2 ? max(170px, self.width * 0.30) : min(320px, self.width * 0.28);
-        property <length> tools-width: self.tier == 0 ? 368px : (self.tier == 1 ? 200px : 164px);
+        property <length> tools-width: self.tier == 0 ? 406px : (self.tier == 1 ? 200px : 164px);
         property <length> center-space: self.width - self.info-width - self.tools-width - 2 * self.pad;
         property <length> center-width: min(600px, self.center-space - 24px);
         property <bool> show-times: self.center-width >= 270px;
@@ -3167,6 +3189,10 @@ export component MainWindow inherits Window {
                 }
             }
             if player-bar.tier < 2: RoundIconButton { d: Icons.connect; label: "Conectar a un dispositivo"; active: root.connect-remote || root.connect-open; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg; clicked => { root.connect-open = !root.connect-open; if root.connect-open { root.open-connect(); } } }
+            if player-bar.tier == 0: RoundIconButton {
+                d: Icons.moon; label: "Temporizador de apagado"; active: root.sleep-label != "" || root.sleep-menu-open; flat: true; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-icon-color: root.bar-fg; hover-bg: root.bar-hover-bg;
+                clicked => { root.sleep-x = player-bar.x + player-bar.width - 260px; root.sleep-y = player-bar.y - 12px; root.sleep-menu-open = !root.sleep-menu-open; }
+            }
             if player-bar.tier == 0: Rectangle { width: 9px; Rectangle { x: 4px; y: 8px; width: 1px; height: parent.height - 16px; background: root.bar-track; } }
             // Volumen: icono y barra en la misma línea que el resto (antes la barra quedaba arriba).
             RoundIconButton {
@@ -3234,6 +3260,13 @@ export component MainWindow inherits Window {
                 active: root.connect-remote || root.connect-open;
                 fg: root.bar-fg; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-bg: root.bar-hover-bg;
                 clicked => { root.bar-pop-open = false; root.connect-open = !root.connect-open; if root.connect-open { root.open-connect(); } }
+            }
+            BarMenuRow {
+                icon-d: Icons.moon;
+                label: (root.pref-lang == "en" ? "Sleep timer" : "Temporizador de apagado") + (root.sleep-label != "" ? " · " + root.sleep-label : "");
+                active: root.sleep-label != "";
+                fg: root.bar-fg; icon-color: root.bar-icon; active-color: root.bar-icon-active; hover-bg: root.bar-hover-bg;
+                clicked => { root.bar-pop-open = false; root.sleep-x = player-bar.x + player-bar.width - 260px; root.sleep-y = player-bar.y - 12px; root.sleep-menu-open = true; }
             }
             BarMenuRow {
                 icon-d: Icons.mini-player; label: root.pref-lang == "en" ? "Mini player" : "Mini reproductor";
@@ -3325,7 +3358,7 @@ export component MainWindow inherits Window {
 
             // ---- Barra superior (botones tonales Material 3) ----
             HorizontalLayout {
-                x: root.is-macos ? 88px : 32px; y: root.is-macos ? 12px : 22px; height: 40px; spacing: 10px;
+                x: 32px; y: root.is-macos ? 22px + root.mac-top : 22px; height: 40px; spacing: 10px;
                 opacity: root.np-controls-visible ? 1 : 0;
                 animate opacity { duration: 350ms; easing: ease-in-out; }
 
@@ -3373,11 +3406,35 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
+
+                Rectangle {
+                    width: sleep-row.preferred-width + 32px; height: 40px; border-radius: root.sleep-label != "" ? 14px : 20px;
+                    background: root.sleep-label != "" ? root.np-accent : (np-sleep-ta.pressed ? root.np-tonal-strong : (np-sleep-ta.has-hover ? root.np-tonal-hover : root.np-tonal));
+                    animate background, border-radius { duration: 200ms; easing: ease-out; }
+                    sleep-row := HorizontalLayout {
+                        alignment: center; spacing: 8px;
+                        IconPath { d: Icons.moon; width: 16px; height: 16px; y: (parent.height - self.height) / 2; tint: root.sleep-label != "" ? root.np-on-accent : root.np-on-surface; }
+                        Text {
+                            text: root.sleep-label != "" ? root.sleep-label : (root.pref-lang == "en" ? "Sleep timer" : "Temporizador");
+                            color: root.sleep-label != "" ? root.np-on-accent : root.np-on-surface;
+                            font-size: 14px; font-weight: 600; vertical-alignment: center;
+                        }
+                    }
+                    np-sleep-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.sleep-x = self.absolute-position.x;
+                            root.sleep-y = self.absolute-position.y + 48px + 300px;
+                            root.sleep-menu-open = !root.sleep-menu-open;
+                            root.np-activity();
+                        }
+                    }
+                }
             }
 
             // Botón segmentado Letra | Cola (Material 3), arriba a la derecha (deja sitio a los botones de ventana en Windows).
             np-pill := TouchArea {
-                x: parent.width - self.width - (root.is-macos ? 32px : 168px); y: root.is-macos ? 12px : 22px;
+                x: parent.width - self.width - (root.is-macos ? 32px : 168px); y: root.is-macos ? 22px + root.mac-top : 22px;
                 width: 132px; height: 40px;
                 opacity: root.np-controls-visible ? 1 : 0;
                 animate opacity { duration: 350ms; easing: ease-in-out; }
@@ -3426,8 +3483,8 @@ export component MainWindow inherits Window {
             }
 
             Rectangle {
-                x: root.width < 1000px ? 32px : 64px; y: 84px;
-                width: parent.width - self.x * 2; height: parent.height - 108px;
+                x: root.width < 1000px ? 32px : 64px; y: 84px + root.mac-top;
+                width: parent.width - self.x * 2; height: parent.height - 108px - root.mac-top;
                 property <bool> panel-open: root.lyrics-open || root.full-queue-open;
                 property <bool> compact-np: root.width < 1100px || root.height < 700px;
                 property <length> controls-h: self.compact-np ? 236px : 256px;
@@ -3677,6 +3734,51 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // ---- Temporizador de apagado: menú de opciones ----
+    if root.sleep-menu-open: TouchArea {
+        width: parent.width; height: parent.height;
+        clicked => { root.sleep-menu-open = false; }
+    }
+    if root.sleep-menu-open: Rectangle {
+        width: 248px; height: sleep-col.preferred-height;
+        // `sleep-y` es el borde inferior deseado: el menú crece hacia arriba desde ahí.
+        x: clamp(root.sleep-x, 8px, parent.width - self.width - 8px);
+        y: clamp(root.sleep-y - self.height, 8px, parent.height - self.height - 8px);
+        border-radius: 20px; background: root.menu-bg;
+        border-width: 1px; border-color: root.menu-border;
+        drop-shadow-blur: 24px; drop-shadow-color: #000000a0;
+        TouchArea { }
+        sleep-col := VerticalLayout {
+            padding: 10px; spacing: 2px;
+            HorizontalLayout {
+                padding-left: 8px; padding-right: 8px; height: 34px; spacing: 10px;
+                IconPath { y: (parent.height - self.height) / 2; d: Icons.moon; tint: Theme.green-bright; }
+                Text { text: root.pref-lang == "en" ? "Sleep timer" : "Temporizador de apagado"; color: white; font-size: 14px; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                if root.sleep-label != "": Text { text: root.sleep-label; color: Theme.green-bright; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+            }
+            Rectangle { height: 1px; background: #ffffff14; }
+            for opt in [
+                { m: 0, es: "Desactivado", en: "Off" },
+                { m: 5, es: "5 minutos", en: "5 minutes" },
+                { m: 15, es: "15 minutos", en: "15 minutes" },
+                { m: 30, es: "30 minutos", en: "30 minutes" },
+                { m: 45, es: "45 minutos", en: "45 minutes" },
+                { m: 60, es: "1 hora", en: "1 hour" },
+                { m: 90, es: "1 hora 30 min", en: "1 hour 30 min" },
+                { m: -1, es: "Al terminar la canción", en: "End of track" },
+            ]: Rectangle {
+                height: 36px; border-radius: 10px;
+                background: sl-ta.has-hover ? #ffffff14 : transparent;
+                HorizontalLayout {
+                    padding-left: 12px; padding-right: 12px; spacing: 10px;
+                    Text { text: root.pref-lang == "en" ? opt.en : opt.es; color: root.sleep-choice == opt.m ? Theme.green-bright : white; font-size: 13px; font-weight: root.sleep-choice == opt.m ? 700 : 500; vertical-alignment: center; horizontal-stretch: 1; }
+                    if root.sleep-choice == opt.m: Text { text: "✓"; color: Theme.green-bright; font-size: 14px; font-weight: 800; vertical-alignment: center; }
+                }
+                sl-ta := TouchArea { mouse-cursor: pointer; clicked => { root.set-sleep(opt.m); root.sleep-menu-open = false; } }
             }
         }
     }

@@ -842,6 +842,12 @@ async fn handle(app: &Arc<App>, msg: &Value) -> Result<Value> {
         // ---- Lecturas por la sesión (sin cuota de Web API) ----
         "rootlist" => reads::library(&engine(app).await?.session).await,
         "library_collection" => reads::library_collection(&engine(app).await?.session).await,
+        "show_episodes" => {
+            let e = engine(app).await?;
+            let offset = msg.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
+            let limit = msg.get("limit").and_then(Value::as_u64).unwrap_or(50).clamp(1, 100) as usize;
+            reads::show_episodes(&e.session, s(msg, "target")?, offset, limit).await
+        }
         "playlist_items" => {
             let e = engine(app).await?;
             if msg.get("fresh").and_then(Value::as_bool)==Some(true) { reads::forget_playlist(s(msg,"target")?); }
