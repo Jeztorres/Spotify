@@ -20,6 +20,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 arboard = { version = "3.7", default-features = false }
 souvlaki = "0.8"
 rust-i18n = "3"
+# Letras TTML de AMLL TTML DB (cantante por línea, como Apple Music).
+roxmltree = "0.20"
 
 [target.'cfg(windows)'.dependencies]
 # Credenciales en el Administrador de credenciales de Windows.

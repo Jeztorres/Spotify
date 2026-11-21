@@ -93,7 +93,7 @@ export struct LibraryEntry { uri: string, title: string, subtitle: string, cover
 export struct QueueRow { title: string, artist: string, tag: string, duration: string, cover: image }
 export struct CardEntry { title: string, subtitle: string, cover: image }
 export struct TrackEntry { index: int, uri: string, cover: image, title: string, artist: string, album: string, duration: string, playcount: string, explicit: bool, playing: bool, saved: bool, like-busy: bool }
-export struct LyricEntry { text: string, translation: string }
+export struct LyricEntry { text: string, translation: string, right: bool, bg: string }
 export struct GenreEntry { name: string, query: string, from: color, to: color }
 export struct ConnectDevice { id: string, name: string, kind: string, icon: string, active: bool, local: bool }
 export struct ArtistChoice { name: string, avatar: image }
@@ -787,24 +787,37 @@ component LyricsView inherits Rectangle {
                 height: max(root.row-min, row-vl.preferred-height);
                 changed is-active => { if self.is-active { root.active-y = self.y; } }
                 changed y => { if self.is-active { root.active-y = self.y; } }
+                // Duetos (como Apple Music): la otra voz se alinea a la derecha.
+                property <TextHorizontalAlignment> align: row.right ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 row-vl := VerticalLayout {
                     width: parent.width;
                     alignment: center;
                     spacing: root.compact ? (root.dual ? 6px : 3px) : (root.dual ? 8px : 6px);
-                    padding-right: 12px;
+                    padding-right: row.right ? 16px : 12px;
+                    padding-left: row.right && !root.compact ? 64px : (row.right ? 28px : 0px);
                     padding-top: root.row-pad; padding-bottom: root.row-pad;
                     Text {
                         text: row.text; wrap: word-wrap;
-                        horizontal-alignment: left; vertical-alignment: center;
+                        horizontal-alignment: row-box.align; vertical-alignment: center;
                         font-family: Theme.display-font;
                         font-size: root.main-font;
                         font-weight: 700;
                         color: root.synced ? (is-active ? Theme.fg : (is-past ? Theme.fg.with-alpha(0.251) : Theme.fg.with-alpha(0.459))) : Theme.fg.with-alpha(0.867);
                         animate color { duration: 350ms; easing: ease-in-out; }
                     }
+                    // Coros de fondo, más pequeños y tenues.
+                    if row.bg != "": Text {
+                        text: row.bg; wrap: word-wrap;
+                        horizontal-alignment: row-box.align; vertical-alignment: center;
+                        font-family: Theme.display-font;
+                        font-size: root.main-font * 0.62;
+                        font-weight: 600;
+                        color: root.synced ? (is-active ? Theme.fg.with-alpha(0.75) : Theme.fg.with-alpha(0.32)) : Theme.fg.with-alpha(0.6);
+                        animate color { duration: 350ms; easing: ease-in-out; }
+                    }
                     if root.dual && row.translation != "": Text {
                         text: row.translation; wrap: word-wrap;
-                        horizontal-alignment: left; vertical-alignment: center;
+                        horizontal-alignment: row-box.align; vertical-alignment: center;
                         font-size: root.tr-font;
                         font-weight: 600;
                         color: root.tr-color;
