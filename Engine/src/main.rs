@@ -798,6 +798,11 @@ async fn handle(app: &Arc<App>, msg: &Value) -> Result<Value> {
         "set_liked" => reads::set_liked(&engine(app).await?.session, &uris_arg(msg)?,
             msg.get("saved").and_then(Value::as_bool).unwrap_or(true)).await,
         "playlist_add" => reads::playlist_add(&engine(app).await?.session, s(msg, "target")?, &uris_arg(msg)?).await,
+        "playlist_move" => {
+            let from = msg.get("from").and_then(Value::as_u64).ok_or_else(|| anyhow!("falta from"))? as usize;
+            let to = msg.get("to_index").and_then(Value::as_u64).ok_or_else(|| anyhow!("falta to_index"))? as usize;
+            reads::playlist_move(&engine(app).await?.session, s(msg, "target")?, from, to).await
+        }
         "pins" => reads::pins(&engine(app).await?.session).await,
         "warmup" => reads::warmup(&engine(app).await?.session).await,
         "playlist_remove" => reads::playlist_remove(&engine(app).await?.session, s(msg, "target")?).await,

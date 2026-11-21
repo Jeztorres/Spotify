@@ -3,7 +3,7 @@ import { Theme } from "theme.slint";
 // Iconos dibujados con rutas vectoriales (en macOS eran SF Symbols).
 export component IconPath inherits Path {
     in property <string> d;
-    in property <color> tint: white;
+    in property <color> tint: Theme.fg;
     // `solid`: silueta rellena (p. ej. el triángulo de play); por defecto, icono de línea.
     in property <bool> solid: false;
     width: 18px;
@@ -56,7 +56,7 @@ export component PlayPauseButton inherits Rectangle {
 export component RoundIconButton inherits Rectangle {
     in property <color> active-color: Theme.green-bright;
     in property <color> icon-color: Theme.sub;
-    in property <color> bg-color: #26262a;
+    in property <color> bg-color: Theme.light ? #e4e4ea : #26262a;
     in property <length> icon-size: 18px;
     in property <bool> enabled: true;
     opacity: root.enabled ? 1 : 0.4;
@@ -69,8 +69,8 @@ export component RoundIconButton inherits Rectangle {
     height: 34px;
     // `flat`: sin círculo de fondo; solo el icono teñido y un halo suave al pasar el ratón.
     in property <bool> flat: false;
-    in property <color> hover-icon-color: white;
-    in property <color> hover-bg: #ffffff1f;
+    in property <color> hover-icon-color: Theme.fg;
+    in property <color> hover-bg: Theme.fg.with-alpha(0.122);
     border-radius: self.height / 2;
     background: root.flat
         ? (ta.pressed ? root.hover-bg.with-alpha(root.hover-bg.alpha * 1.7) : (ta.has-hover ? root.hover-bg : (root.active ? root.active-color.with-alpha(0.14) : transparent)))
@@ -99,9 +99,9 @@ export component RoundIconButton inherits Rectangle {
 // Barra de progreso / volumen: toma el color de la portada y se aclara al pasar el ratón.
 export component Scrubber inherits Rectangle {
     in-out property <float> value: 0;
-    in property <color> bar-color: white;
+    in property <color> bar-color: Theme.fg;
     in property <color> accent: Theme.green-bright;
-    in property <color> track-color: #ffffff2e;
+    in property <color> track-color: Theme.fg.with-alpha(0.180);
     in property <float> marker-start: 1.0;
     in property <color> marker-color: Theme.green-bright;
     in property <bool> wavy: false;
@@ -251,7 +251,7 @@ export component VerticalEqSlider inherits Rectangle {
     Rectangle {
         x: 6px; y: parent.height / 2 - 0.5px;
         width: parent.width - 12px; height: 1px;
-        background: #ffffff28;
+        background: Theme.fg.with-alpha(0.157);
     }
     // Pista vertical
     Rectangle {
@@ -260,7 +260,7 @@ export component VerticalEqSlider inherits Rectangle {
         width: 5px;
         height: parent.height - 12px;
         border-radius: 2.5px;
-        background: #ffffff24;
+        background: Theme.fg.with-alpha(0.141);
         // Relleno desde abajo hasta el nivel
         Rectangle {
             x: 0;
@@ -268,7 +268,7 @@ export component VerticalEqSlider inherits Rectangle {
             height: parent.height * clamp(root.value, 0, 1);
             y: parent.height - self.height;
             border-radius: 2.5px;
-            background: root.active ? (ta.has-hover || ta.pressed ? root.accent.brighter(0.15) : root.accent) : #ffffff55;
+            background: root.active ? (ta.has-hover || ta.pressed ? root.accent.brighter(0.15) : root.accent) : Theme.fg.with-alpha(0.333);
         }
     }
     // Perilla
@@ -278,7 +278,7 @@ export component VerticalEqSlider inherits Rectangle {
         width: ta.has-hover || ta.pressed ? 14px : 12px;
         height: self.width;
         border-radius: self.width / 2;
-        background: root.active ? white : #ffffff88;
+        background: root.active ? (Theme.light ? root.accent : white) : Theme.fg.with-alpha(0.533);
         animate width { duration: 120ms; }
     }
     ta := TouchArea {
@@ -300,11 +300,11 @@ export component NavItem inherits Rectangle {
     in property <string> title;
     in property <bool> active;
     // Color del elemento activo (personalizable desde Ajustes).
-    in property <color> accent: white;
+    in property <color> accent: Theme.fg;
     callback clicked();
     height: 40px;
     border-radius: 8px;
-    background: root.active ? root.accent.with-alpha(0.12) : (ta.has-hover ? #ffffff0a : transparent);
+    background: root.active ? root.accent.with-alpha(0.12) : (ta.has-hover ? Theme.fg.with-alpha(0.039) : transparent);
     HorizontalLayout {
         padding-left: 12px;
         padding-right: 12px;
@@ -312,7 +312,7 @@ export component NavItem inherits Rectangle {
         alignment: start;
         IconPath {
             d: root.icon-d;
-            tint: root.active ? root.accent : (ta.has-hover ? white : Theme.sub);
+            tint: root.active ? root.accent : (ta.has-hover ? Theme.fg : Theme.sub);
             y: (parent.height - self.height) / 2;
             width: 22px;
             height: 22px;
@@ -321,7 +321,7 @@ export component NavItem inherits Rectangle {
             text: root.title;
             font-size: 15px;
             font-weight: 700;
-            color: root.active ? root.accent : (ta.has-hover ? white : Theme.sub);
+            color: root.active ? root.accent : (ta.has-hover ? Theme.fg : Theme.sub);
             vertical-alignment: center;
         }
     }
@@ -347,9 +347,9 @@ export component M3IconButton inherits Rectangle {
     in property <bool> active: false;
     in property <bool> tonal: true;
     in property <bool> enabled: true;
-    in property <color> container: #ffffff1a;
+    in property <color> container: Theme.fg.with-alpha(0.102);
     in property <color> active-container: white;
-    in property <color> icon-color: white;
+    in property <color> icon-color: Theme.fg;
     in property <color> active-icon-color: black;
     in property <length> icon-size: 22px;
     in property <string> label;
@@ -365,7 +365,7 @@ export component M3IconButton inherits Rectangle {
     // Capa de estado (hover / pulsado).
     Rectangle {
         border-radius: parent.border-radius;
-        background: ta.pressed ? (root.active ? #00000029 : #ffffff29) : (ta.has-hover ? (root.active ? #00000014 : #ffffff17) : transparent);
+        background: ta.pressed ? (root.active ? #00000029 : Theme.fg.with-alpha(0.161)) : (ta.has-hover ? (root.active ? #00000014 : Theme.fg.with-alpha(0.090)) : transparent);
         animate background { duration: 120ms; }
     }
     IconPath {

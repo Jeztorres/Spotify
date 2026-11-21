@@ -518,6 +518,35 @@ pub async fn playlist_add(session: &Session, id: &str, uris: &[String]) -> Resul
     Err(last.unwrap_or_else(|| anyhow!("no se pudo añadir a la playlist")))
 }
 
+/// Mueve una canción dentro de la playlist. `to_index` sigue la convención de Spotify: posición
+/// (en la lista original) delante de la que se inserta.
+pub async fn playlist_move(session: &Session, id: &str, from: usize, to_index: usize) -> Result<Value> {
+    use librespot_protocol::playlist4_external::{op::Kind, Delta, ListChanges, Mov, Op};
+    let sid = SpotifyId::from_base62(id)?;
+    let mut last: Option<anyhow::Error> = None;
+    for _ in 0..2 {
+        let bytes = session.spclient().get_playlist(&sid).await?;
+        let current = SelectedListContent::parse_from_bytes(&bytes)?;
+        let mut mov = Mov::new();
+        mov.set_from_index(from as i32);
+        mov.set_length(1);
+        mov.set_to_index(to_index as i32);
+        let mut op = Op::new();
+        op.set_kind(Kind::MOV);
+        op.mov = protobuf::MessageField::some(mov);
+        let mut delta = Delta::new();
+        delta.ops.push(op);
+        let mut changes = ListChanges::new();
+        changes.set_base_revision(current.revision().to_vec());
+        changes.deltas.push(delta);
+        match session.spclient().post_playlist_changes(&sid, &changes).await {
+            Ok(_) => { forget_playlist(id); return Ok(Value::Null); }
+            Err(e) => last = Some(e.into()),
+        }
+    }
+    Err(last.unwrap_or_else(|| anyhow!("no se pudo mover la canción")))
+}
+
 // ---- Fijados de «Tu biblioteca» (colección `ylpin`, la misma que usa la app oficial) ----
 
 /// Elementos fijados (playlists, álbumes, artistas, «Tus me gusta»…), el más reciente primero.

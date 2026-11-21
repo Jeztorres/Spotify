@@ -1078,7 +1078,7 @@ fn track_rows(tracks: &[Track], playing_uri: Option<&str>) -> Vec<TrackEntry> {
         .collect()
 }
 
-fn refresh_rows(app: &mut App) {
+pub(crate) fn refresh_rows(app: &mut App) {
     let uri = app.player.track.as_ref().map(|t| t.uri.clone());
     let existing: std::collections::HashMap<String, Image> = (0..app.rows.row_count())
         .filter_map(|i| app.rows.row_data(i)).map(|r| (r.uri.to_string(), r.cover)).collect();
