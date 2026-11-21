@@ -1079,7 +1079,7 @@ pub fn open_top(ui: &MainWindow, app: &mut App) {
         Some(TopHit::Artist(a)) => open_source(ui, app, Source::ArtistTop(a)),
         Some(TopHit::Album(a)) => open_source(ui, app, Source::Album(a)),
         Some(TopHit::Playlist(p)) => open_source(ui, app, Source::Playlist(p)),
-        Some(TopHit::Track(t)) => play_now(ui, app, PlayReq::Track(t.uri.clone()), t),
+        Some(TopHit::Track(t)) => play_with_similar(ui, app, t),
         None => {}
     }
 }
@@ -1090,7 +1090,7 @@ pub fn play_top(ui: &MainWindow, app: &mut App) {
         Some(TopHit::Artist(a)) => play_req(app, PlayReq::Context { uri: a.uri, start: None, skip: 0 }),
         Some(TopHit::Album(a)) => play_req(app, PlayReq::Context { uri: a.uri, start: None, skip: 0 }),
         Some(TopHit::Playlist(p)) => play_req(app, PlayReq::Context { uri: p.uri, start: None, skip: 0 }),
-        Some(TopHit::Track(t)) => play_now(ui, app, PlayReq::Track(t.uri.clone()), t),
+        Some(TopHit::Track(t)) => play_with_similar(ui, app, t),
         None => {}
     }
 }
@@ -1110,16 +1110,17 @@ fn play_now(ui: &MainWindow, app: &mut App, req: PlayReq, track: Track) {
     render_player(ui, app);
 }
 
-/// Pulsar una canción de los resultados: suena la lista de resultados empezando por ella.
+/// Pulsar una canción de los resultados: suena esa canción y la cola se llena con canciones
+/// parecidas recomendadas por Spotify (no con el resto de resultados de la búsqueda).
 pub fn play_search_track(ui: &MainWindow, app: &mut App, i: usize) {
     let Some(track) = app.search.tracks.get(i).cloned() else { return };
     remember_search(ui, app);
-    let uris: Vec<String> = app.search.tracks.iter().take(100).map(|t| t.uri.clone()).collect();
-    play_req(app, PlayReq::Tracks { uris, start: track.uri.clone() });
-    app.player.track = Some(track);
-    app.player.playing = true;
-    app.player.set_position(0);
-    render_player(ui, app);
+    play_with_similar(ui, app, track);
+}
+
+fn play_with_similar(ui: &MainWindow, app: &mut App, track: Track) {
+    play_now(ui, app, PlayReq::Track(track.uri.clone()), track.clone());
+    queue_ui::fill_similar(app, &track);
 }
 
 /// kind: 0 artista · 1 álbum · 2 playlist

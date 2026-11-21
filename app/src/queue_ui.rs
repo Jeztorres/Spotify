@@ -62,7 +62,12 @@ pub fn refresh(ui: &MainWindow, app: &mut App) {
     let rows: Vec<QueueRow> = if soloist {
         tracks.iter().map(|t| row(t, "")).collect()
     } else {
-        app.queue.items.iter().map(|i| row(&i.track, q::tag(i))).collect()
+        // Las recomendaciones que añade la app (búsqueda o modo infinito) se agrupan como
+        // «Recomendado por Spotify», no como canciones que añadió el usuario.
+        app.queue.items.iter().map(|i| {
+            let tag = if i.queued && app.queue.autoplay_queued.contains(&i.track.uri) { "AUTOPLAY" } else { q::tag(i) };
+            row(&i.track, tag)
+        }).collect()
     };
     app.queue.model.set_vec(rows);
     // La siguiente canción: su letra (y traducción) se piden ya, para que aparezcan al cambiar.
@@ -317,6 +322,40 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
                 let excess = app.queue.autoplay_history.len() - 60;
                 app.queue.autoplay_history.drain(..excess);
             }
+        });
+    });
+}
+
+/// Canción suelta (p. ej. desde la búsqueda): la cola se llena con canciones parecidas que
+/// recomienda Spotify, como en la app oficial, en lugar de con el resto de resultados.
+pub fn fill_similar(app: &mut App, seed: &Track) {
+    if !seed.uri.starts_with("spotify:track:") {
+        return;
+    }
+    let Some(engine) = app.engine.clone() else { return };
+    let seed_uri = seed.uri.clone();
+    std::thread::spawn(move || {
+        let res = engine
+            .call("recommend", json!({"seeds": [seed_uri.clone()], "exclude": [seed_uri.clone()], "limit": 25}), Duration::from_secs(25))
+            .and_then(|v| serde_json::from_value::<spotify_core::TopTracksResponse>(v).map_err(|e| e.to_string()));
+        on_ui(move |ui, app| {
+            let Ok(resp) = res else { return };
+            // Si mientras tanto se puso otra cosa, no se mezcla.
+            if app.player.track.as_ref().map(|t| t.uri.as_str()) != Some(seed_uri.as_str()) {
+                return;
+            }
+            let mut seen: std::collections::HashSet<String> = app.queue.items.iter().map(|i| i.track.uri.clone()).collect();
+            seen.insert(seed_uri.clone());
+            for t in resp.tracks.into_iter().filter(|t| t.uri.starts_with("spotify:track:") && seen.insert(t.uri.clone())).take(20) {
+                app.queue.autoplay_history.push(t.uri.clone());
+                app.queue.autoplay_queued.insert(t.uri.clone());
+                enqueue_silent(app, &t.uri);
+            }
+            if app.queue.autoplay_history.len() > 60 {
+                let excess = app.queue.autoplay_history.len() - 60;
+                app.queue.autoplay_history.drain(..excess);
+            }
+            refresh(ui, app);
         });
     });
 }
