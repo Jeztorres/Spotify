@@ -16,6 +16,8 @@ pub struct QueueState {
     autoplay_last_empty_seed: Option<String>,
     autoplay_queued: std::collections::HashSet<String>,
     context_switch_until: Option<Instant>,
+    /// Radio sin fin a partir de una canción buscada: la cola se mantiene llena de parecidas.
+    radio_seed: Option<String>,
 }
 
 impl QueueState {
@@ -30,6 +32,7 @@ impl QueueState {
             autoplay_last_empty_seed: None,
             autoplay_queued: std::collections::HashSet::new(),
             context_switch_until: None,
+            radio_seed: None,
         }
     }
 }
@@ -187,6 +190,7 @@ fn enqueue_silent(app: &App, uri: &str) {
 /// automáticamente el modo infinito para que no se mezclen antes del nuevo contexto.
 pub fn clear_autoplay_on_play(app: &mut App) {
     app.queue.context_switch_until = Some(Instant::now() + Duration::from_secs(8));
+    app.queue.radio_seed = None;
     if app.queue.autoplay_queued.is_empty() {
         return;
     }
@@ -208,10 +212,14 @@ pub fn clear_autoplay_on_play(app: &mut App) {
 
 /// Margen antes del final de la canción en el que el modo infinito puede añadir recomendaciones.
 const INFINITE_FILL_WINDOW_MS: i64 = 25_000;
+/// Radio de una canción buscada: canciones parecidas que siempre quedan en cola.
+const RADIO_MIN_UPCOMING: usize = 5;
 
 /// Si la cola está por acabarse y el modo infinito está activo, añade recomendaciones basadas en lo que suena.
 pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
-    if !ui.get_infinite_queue() || ui.get_repeat_mode() == "one" || app.queue.autoplay_inflight {
+    // La radio de una canción buscada sigue sin fin aunque el modo infinito esté apagado.
+    let radio = app.queue.radio_seed.clone();
+    if (!ui.get_infinite_queue() && radio.is_none()) || ui.get_repeat_mode() == "one" || app.queue.autoplay_inflight {
         return;
     }
     if app
@@ -236,7 +244,12 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
         app.queue.autoplay_last_empty_seed = None;
     }
     let upcoming = if solo_only(app) { app.queue.solo.len() } else { app.queue.items.len() };
-    if upcoming > 0 {
+    if radio.is_some() {
+        // Radio: siempre hay al menos 5 canciones parecidas esperando.
+        if upcoming >= RADIO_MIN_UPCOMING {
+            return;
+        }
+    } else if upcoming > 0 {
         return;
     }
     // Como en Spotify: la playlist/álbum se escucha completo y solo al final continúan las
@@ -244,7 +257,7 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
     // una playlist nueva) y se colaban canciones ajenas delante de las de la playlist.
     // Solo se rellena en los últimos segundos de la canción y si Spotify no trajo su propio autoplay.
     let remaining = current.duration_ms as i64 - app.player.position();
-    if current.duration_ms > 0 && remaining > INFINITE_FILL_WINDOW_MS {
+    if radio.is_none() && current.duration_ms > 0 && remaining > INFINITE_FILL_WINDOW_MS {
         return;
     }
     if app.queue.autoplay_last_empty_seed.as_deref() == Some(current.uri.as_str()) {
@@ -256,6 +269,10 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
     app.queue.autoplay_inflight = true;
 
     let mut seeds = vec![current.uri.clone()];
+    // La canción buscada sigue marcando el estilo de la radio.
+    if let Some(seed) = radio.filter(|s| s != &current.uri) {
+        seeds.push(seed);
+    }
     for u in app.queue.autoplay_history.iter().rev() {
         if u.starts_with("spotify:track:") && !seeds.contains(u) {
             seeds.push(u.clone());
@@ -307,7 +324,7 @@ pub fn maybe_fill_infinite(ui: &MainWindow, app: &mut App) {
                 .tracks
                 .into_iter()
                 .filter(|t| t.uri.starts_with("spotify:track:") && existing.insert(t.uri.clone()))
-                .take(5)
+                .take(if app.queue.radio_seed.is_some() { 10 } else { 5 })
                 .collect();
             if picked.is_empty() {
                 app.queue.autoplay_last_empty_seed = Some(seed_uri);
@@ -334,6 +351,8 @@ pub fn fill_similar(app: &mut App, seed: &Track) {
     }
     let Some(engine) = app.engine.clone() else { return };
     let seed_uri = seed.uri.clone();
+    // A partir de aquí la cola se rellena sola sin fin (ver `maybe_fill_infinite`).
+    app.queue.radio_seed = Some(seed_uri.clone());
     std::thread::spawn(move || {
         let res = engine
             .call("recommend", json!({"seeds": [seed_uri.clone()], "exclude": [seed_uri.clone()], "limit": 25}), Duration::from_secs(25))
